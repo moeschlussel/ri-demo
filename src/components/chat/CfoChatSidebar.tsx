@@ -18,12 +18,6 @@ type ChatMessage = {
   toolCalls?: ChatToolCallRecord[];
 };
 
-const starterPrompts = [
-  "What's our overall net profit margin across all Home Depot locations?",
-  "How has monthly net profit changed over the last 24 months, and where has momentum weakened most?",
-  "Run an audit on technician expenses over the last year. Any duplicate flight billings or unusually large equipment purchases?"
-];
-
 function scopeLabel(scope: Scope): string {
   if (scope.type === "global") {
     return "Global";
@@ -80,24 +74,6 @@ function ChatPanel({
       <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-0">
         <ScrollArea className="min-h-0 flex-1 px-4">
           <div className="space-y-4 py-4">
-            {messages.length === 0 ? (
-              <div className="space-y-3">
-                <p className="text-sm text-[var(--muted)]">Starter prompts</p>
-                <div className="space-y-2">
-                  {starterPrompts.map((prompt) => (
-                    <button
-                      key={prompt}
-                      type="button"
-                      disabled={isPending}
-                      onClick={() => onSend(prompt)}
-                      className="w-full rounded-2xl border border-[color:var(--border)] bg-white p-3 text-left text-sm text-slate-700 transition hover:border-[var(--accent)] hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {prompt}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
             {messages.map((message) => (
               <MessageBubble
                 key={message.id}

@@ -23,7 +23,7 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[var(--background)] lg:flex">
+    <div className="min-h-screen bg-[var(--background)] lg:flex lg:h-screen lg:overflow-hidden">
       <div className="hidden lg:block lg:shrink-0">
         <HierarchySidebar
           scope={scope}
@@ -33,7 +33,7 @@ export function DashboardShell({
         />
       </div>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 flex-1 lg:overflow-y-auto">
         <div className="sticky top-0 z-20 border-b border-[color:var(--border)] bg-[rgba(244,247,251,0.92)] backdrop-blur lg:hidden">
           <div className="flex items-center gap-3 px-4 py-3">
             <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>

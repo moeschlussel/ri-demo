@@ -249,7 +249,7 @@ export function HierarchySidebar({
     <aside
       className={cn(
         "flex flex-col bg-white/94 text-slate-900 backdrop-blur-xl",
-        mobile ? "w-full h-full" : "sticky top-0 h-screen border-r border-[color:var(--border)] transition-[width] duration-200 ease-out",
+        mobile ? "w-full h-full" : "h-screen border-r border-[color:var(--border)] transition-[width] duration-200 ease-out",
         compact ? "w-20" : "w-[22rem]"
       )}
     >

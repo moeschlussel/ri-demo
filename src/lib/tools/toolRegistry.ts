@@ -16,6 +16,7 @@ import {
   GetExpenseBreakdownInput,
   GetExpenseBreakdownOutput
 } from "@/lib/tools/getExpenseBreakdown";
+import { getProfitTrend, GetProfitTrendInput, GetProfitTrendOutput } from "@/lib/tools/getProfitTrend";
 import { getTripSummary, GetTripSummaryInput, GetTripSummaryOutput } from "@/lib/tools/getTripSummary";
 import {
   getScopeFinancials,
@@ -247,6 +248,29 @@ export const toolRegistry = {
           months: {
             type: "number",
             description: "How many trailing months of travel trend data to return.",
+            minimum: 1,
+            maximum: 36
+          }
+        },
+        required: ["scopeType"]
+      }
+    }
+  },
+  get_profit_trend: {
+    description: "Return monthly net-profit trend data and summary metrics for a scope.",
+    inputSchema: GetProfitTrendInput,
+    outputSchema: GetProfitTrendOutput,
+    handler: getProfitTrend,
+    geminiDeclaration: {
+      name: "get_profit_trend",
+      description: "Return monthly net profit over time and the headline trend summary.",
+      parametersJsonSchema: {
+        type: "object",
+        properties: {
+          ...createScopeProperties(),
+          months: {
+            type: "number",
+            description: "How many trailing months of profit trend data to return.",
             minimum: 1,
             maximum: 36
           }

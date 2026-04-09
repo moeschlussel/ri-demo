@@ -9,7 +9,6 @@ import { formatCurrency } from "@/lib/format";
 import type { Scope } from "@/lib/types";
 
 type ExpenseBreakdownData = {
-  review_enabled: boolean;
   rows: Array<{
     expense_id: string;
     technician_id: string | null;
@@ -22,8 +21,6 @@ type ExpenseBreakdownData = {
     anomaly_flag: boolean;
     anomaly_type: string | null;
     anomaly_reason: string | null;
-    anomaly_review_status: "unreviewed" | "verified";
-    anomaly_reviewed_at: string | null;
   }>;
   total_count: number;
   total_amount: number;
@@ -151,11 +148,6 @@ export function ExpenseBreakdownTable({
       </CardHeader>
       <CardContent className="space-y-4 overflow-x-auto">
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-        {!error && data && !data.review_enabled ? (
-          <p className="text-sm text-[var(--warning)]">
-            Verification status is unavailable until the latest database migration is applied.
-          </p>
-        ) : null}
         {!error ? (
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]">
             <span>{filteredRows.length} visible rows</span>
@@ -196,9 +188,7 @@ export function ExpenseBreakdownTable({
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone="danger">{row.anomaly_type?.replaceAll("_", " ") ?? "flagged"}</Badge>
-                        <Badge tone={row.anomaly_review_status === "verified" ? "accent" : "warning"}>
-                          {row.anomaly_review_status === "verified" ? "verified" : "needs review"}
-                        </Badge>
+                        <Badge tone="warning">Needs review</Badge>
                       </div>
                       <p className="max-w-md text-xs leading-5 text-[var(--muted)]">{row.anomaly_reason}</p>
                     </div>

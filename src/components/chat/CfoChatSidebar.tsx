@@ -20,7 +20,7 @@ type ChatMessage = {
 
 const starterPrompts = [
   "What's our overall net profit margin across all Home Depot locations?",
-  "How have average travel costs per survey changed over the last 24 months, and what's the projected run-rate for next quarter?",
+  "How has monthly net profit changed over the last 24 months, and where has momentum weakened most?",
   "Run an audit on technician expenses over the last year. Any duplicate flight billings or unusually large equipment purchases?"
 ];
 
@@ -123,7 +123,7 @@ function ChatPanel({
             <Input
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
-              placeholder="Ask about margin, travel trends, or anomalies..."
+              placeholder="Ask about margin, profit trends, or anomalies..."
             />
             <Button type="submit" disabled={isPending}>
               <Send className="h-4 w-4" />
@@ -254,4 +254,3 @@ export function CfoChatSidebar({ scope }: { scope: Scope }) {
     </>
   );
 }
-

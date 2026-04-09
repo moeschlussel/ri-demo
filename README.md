@@ -1,6 +1,6 @@
 # RI AI CFO Dashboard
 
-RI AI CFO Dashboard is a scope-aware financial intelligence app for Robotic Imaging. It shows deterministic KPI cards, margin and travel trends, expense breakdowns, and anomaly findings at global, organization, and project scope. A Gemini-powered CFO sidebar sits alongside the dashboard, but it never does math itself: it calls a small, typed tool layer that reads from Supabase reporting views and then explains the returned numbers in plain language.
+RI AI CFO Dashboard is a scope-aware financial intelligence app for Robotic Imaging. It shows deterministic KPI cards, margin and net profit trends, expense breakdowns, and anomaly findings at global, organization, and project scope. A Gemini-powered CFO sidebar sits alongside the dashboard, but it never does math itself: it calls a small, typed tool layer that reads from Supabase reporting views and typed server aggregations, then explains the returned numbers in plain language.
 
 ## Architecture
 
@@ -19,13 +19,14 @@ flowchart LR
 
 ### Tool calling instead of NL2SQL
 
-The LLM does not see schema details and never writes free SQL. It gets exactly seven business tools:
+The LLM does not see schema details and never writes free SQL. It gets exactly eight business tools:
 
 - `resolve_scope_entities`
 - `get_scope_financials`
 - `get_expense_breakdown`
 - `get_trip_summary`
 - `get_travel_trend`
+- `get_profit_trend`
 - `detect_anomalies`
 - `forecast_expenses`
 
@@ -38,13 +39,14 @@ All reusable financial truth lives in additive reporting views:
 - `expense_anomalies_v`
 - `project_financials_v`
 - `org_financials_v`
+- `monthly_profit_trends_v`
 - `monthly_travel_trends_v`
 
 The base schema remains untouched. This keeps derived business logic centralized, deterministic, and easy to inspect in code review.
 
 ### The AI never does math
 
-Revenue, expenses, profit, margin, travel trends, forecasts, anomaly counts, and trip rollups are computed in SQL or TypeScript only. Gemini’s role is limited to:
+Revenue, expenses, profit, profit trends, travel trends, forecasts, anomaly counts, and trip rollups are computed in SQL or TypeScript only. Gemini’s role is limited to:
 
 - deciding which tool(s) to call
 - resolving natural-language entities like "Miami", "Aisha", or "flights" into exact ids or canonical filters before querying

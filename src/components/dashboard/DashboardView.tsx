@@ -3,9 +3,9 @@ import { AlertCircle, Building2, FolderKanban } from "lucide-react";
 import { Breadcrumbs } from "@/components/dashboard/Breadcrumbs";
 import { ChildTable } from "@/components/dashboard/ChildTable";
 import { ExpenseBreakdownTable } from "@/components/dashboard/ExpenseBreakdownTable";
+import { NetProfitTrendChart } from "@/components/dashboard/NetProfitTrendChart";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { KpiCards } from "@/components/dashboard/KpiCards";
-import { TravelTrendChart } from "@/components/dashboard/TravelTrendChart";
 import { CfoChatSidebar } from "@/components/chat/CfoChatSidebar";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatPercent } from "@/lib/format";
@@ -38,10 +38,10 @@ function ErrorCard({ message }: { message: string }) {
 export async function DashboardView({ scope }: { scope: Scope }) {
   const toolInput = scopeToToolInput(scope);
 
-  const [financialsResult, travelTrendResult, expenseBreakdownResult, anomaliesResult, childRowsResult, navigationResult] =
+  const [financialsResult, profitTrendResult, expenseBreakdownResult, anomaliesResult, childRowsResult, navigationResult] =
     await Promise.allSettled([
       toolRegistry.get_scope_financials.handler(toolInput),
-      toolRegistry.get_travel_trend.handler({ ...toolInput, months: 24 }),
+      toolRegistry.get_profit_trend.handler({ ...toolInput, months: 24 }),
       toolRegistry.get_expense_breakdown.handler({ ...toolInput, limit: 200 }),
       toolRegistry.detect_anomalies.handler({ ...toolInput, lookbackMonths: 12 }),
       scope.type === "global"
@@ -57,13 +57,13 @@ export async function DashboardView({ scope }: { scope: Scope }) {
       ? {
           eyebrow: "Enterprise Overview",
           title: "Robotic Imaging financial health",
-          description: "Cross-account profitability, travel exposure, and anomaly pressure across the full business."
+          description: "Cross-account profitability, net profit momentum, and anomaly pressure across the full business."
         }
       : scope.type === "org"
         ? {
             eyebrow: "Organization View",
             title: scope.name,
-            description: "Margin, expense pressure, and anomalies for this client organization."
+            description: "Margin, net profit momentum, and anomaly pressure for this client organization."
           }
         : {
             eyebrow: "Project View",
@@ -136,9 +136,9 @@ export async function DashboardView({ scope }: { scope: Scope }) {
         <ErrorCard message={financialsResult.reason instanceof Error ? financialsResult.reason.message : "Failed loading KPIs."} />
       )}
 
-      <TravelTrendChart
-        data={travelTrendResult.status === "fulfilled" ? travelTrendResult.value : undefined}
-        error={travelTrendResult.status === "rejected" ? "Failed loading travel trend data." : undefined}
+      <NetProfitTrendChart
+        data={profitTrendResult.status === "fulfilled" ? profitTrendResult.value : undefined}
+        error={profitTrendResult.status === "rejected" ? "Failed loading net profit trend data." : undefined}
       />
 
       {scope.type === "global" ? (
@@ -164,7 +164,7 @@ export async function DashboardView({ scope }: { scope: Scope }) {
         <Card>
           <CardContent className="flex items-center gap-3 p-5 text-sm text-[var(--muted)]">
             <Building2 className="h-5 w-5 text-[var(--accent)]" />
-            The global view inherits scope into chat automatically. Ask about profitability, travel trends, or audit findings without naming the organization unless you want to override the current page.
+            The global view inherits scope into chat automatically. Ask about profitability, profit trends, or audit findings without naming the organization unless you want to override the current page.
           </CardContent>
         </Card>
       ) : null}

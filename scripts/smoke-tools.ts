@@ -158,6 +158,10 @@ async function main() {
     scopeType: "global",
     months: 24
   });
+  const profitTrend = await toolRegistry.get_profit_trend.handler({
+    scopeType: "global",
+    months: 24
+  });
   const anomalies = await toolRegistry.detect_anomalies.handler({
     scopeType: "global",
     lookbackMonths: 12
@@ -219,6 +223,7 @@ async function main() {
         travelOnlyExpenseCount: travelOnlyExpenses?.total_count ?? 0,
         breakdownRows: expenseBreakdown.rows.length,
         travelMonths: travelTrend.months.length,
+        profitMonths: profitTrend.months.length,
         anomalyCount: anomalies.count,
         anomalyTypes: anomalies.by_type,
         forecast

@@ -40,12 +40,9 @@ export const DetectAnomaliesOutput = z.object({
       category: z.string(),
       technician_name: z.string().nullable(),
       project_name: z.string().nullable(),
-      date: z.string(),
-      review_status: z.enum(["unreviewed", "verified"]),
-      reviewed_at: z.string().nullable()
+      date: z.string()
     })
   ),
-  review_enabled: z.boolean(),
   count: z.number(),
   by_type: z.record(z.string(), z.number()),
   total_flagged_amount: z.number()
@@ -56,16 +53,10 @@ type AnomalyRow = GenericRow & {
   project_id: string | null;
   user_id: string | null;
   date: string;
-  anomaly_review_status?: string | null;
-  anomaly_reviewed_at?: string | null;
 };
 
 export type DetectAnomaliesInputType = z.infer<typeof DetectAnomaliesInput>;
 export type DetectAnomaliesOutputType = z.infer<typeof DetectAnomaliesOutput>;
-
-function isMissingReviewColumnsError(message: string): boolean {
-  return message.includes("anomaly_review_status") || message.includes("anomaly_reviewed_at");
-}
 
 export async function detectAnomalies(input: DetectAnomaliesInputType): Promise<DetectAnomaliesOutputType> {
   const supabase = getServerSupabaseClient();
@@ -75,73 +66,48 @@ export async function detectAnomalies(input: DetectAnomaliesInputType): Promise<
   const startDate = normalizeOptionalDate(input.startDate);
   const endDate = normalizeOptionalDate(input.endDate);
 
-  function buildQuery(selectClause: string) {
-    let query = supabase
-      .from("expense_anomalies_v")
-      .select(selectClause)
-      .eq("anomaly_flag", true)
-      .gte("date", cutoff.toISOString())
-      .order("date", { ascending: false });
+  let query = supabase
+    .from("expense_anomalies_v")
+    .select("expense_id, project_id, org_id, user_id, technician_name, project_name, date, category, amount, anomaly_type, anomaly_reason")
+    .eq("anomaly_flag", true)
+    .gte("date", cutoff.toISOString())
+    .order("date", { ascending: false });
 
-    if (input.scopeType === "org") {
-      query = query.eq("org_id", input.scopeId ?? "");
-    }
-
-    if (input.scopeType === "project") {
-      query = query.eq("project_id", input.scopeId ?? "");
-    }
-
-    if (input.technicianIds?.length) {
-      query = query.in("user_id", input.technicianIds);
-    }
-
-    if (input.projectIds?.length) {
-      query = query.in("project_id", input.projectIds);
-    }
-
-    if (categories.length === 1) {
-      query = query.eq("category", categories[0]);
-    } else if (categories.length > 1) {
-      query = query.in("category", categories);
-    }
-
-    if (exactDate) {
-      query = query.gte("date", `${exactDate}T00:00:00.000Z`).lte("date", `${exactDate}T23:59:59.999Z`);
-    } else {
-      if (startDate) {
-        query = query.gte("date", `${startDate}T00:00:00.000Z`);
-      }
-
-      if (endDate) {
-        query = query.lte("date", `${endDate}T23:59:59.999Z`);
-      }
-    }
-
-    return query;
+  if (input.scopeType === "org") {
+    query = query.eq("org_id", input.scopeId ?? "");
   }
 
-  const reviewSelect =
-    "expense_id, project_id, org_id, user_id, technician_name, project_name, date, category, amount, anomaly_type, anomaly_reason, anomaly_review_status, anomaly_reviewed_at";
-  const legacySelect =
-    "expense_id, project_id, org_id, user_id, technician_name, project_name, date, category, amount, anomaly_type, anomaly_reason";
-
-  let rows: AnomalyRow[] = [];
-  let reviewEnabled = true;
-  let primaryError: Error | null = null;
-
-  try {
-    rows = (await unwrapResponse(buildQuery(reviewSelect), "Failed loading anomalies")) as unknown as AnomalyRow[];
-  } catch (error) {
-    primaryError = error instanceof Error ? error : new Error("Failed loading anomalies");
-
-    if (!isMissingReviewColumnsError(primaryError.message)) {
-      throw primaryError;
-    }
-
-    reviewEnabled = false;
-    rows = (await unwrapResponse(buildQuery(legacySelect), "Failed loading anomalies")) as unknown as AnomalyRow[];
+  if (input.scopeType === "project") {
+    query = query.eq("project_id", input.scopeId ?? "");
   }
 
+  if (input.technicianIds?.length) {
+    query = query.in("user_id", input.technicianIds);
+  }
+
+  if (input.projectIds?.length) {
+    query = query.in("project_id", input.projectIds);
+  }
+
+  if (categories.length === 1) {
+    query = query.eq("category", categories[0]);
+  } else if (categories.length > 1) {
+    query = query.in("category", categories);
+  }
+
+  if (exactDate) {
+    query = query.gte("date", `${exactDate}T00:00:00.000Z`).lte("date", `${exactDate}T23:59:59.999Z`);
+  } else {
+    if (startDate) {
+      query = query.gte("date", `${startDate}T00:00:00.000Z`);
+    }
+
+    if (endDate) {
+      query = query.lte("date", `${endDate}T23:59:59.999Z`);
+    }
+  }
+
+  const rows = (await unwrapResponse(query, "Failed loading anomalies")) as AnomalyRow[];
   const anomalies = rows.map((row) => ({
     expense_id: toString(row.expense_id),
     project_id: toNullableString(row.project_id),
@@ -153,14 +119,11 @@ export async function detectAnomalies(input: DetectAnomaliesInputType): Promise<
     category: toString(row.category),
     technician_name: toNullableString(row.technician_name),
     project_name: toNullableString(row.project_name),
-    date: toString(row.date),
-    review_status: reviewEnabled && row.anomaly_review_status === "verified" ? "verified" : "unreviewed",
-    reviewed_at: reviewEnabled ? toNullableString(row.anomaly_reviewed_at) : null
+    date: toString(row.date)
   }));
 
   return DetectAnomaliesOutput.parse({
     anomalies,
-    review_enabled: reviewEnabled,
     count: anomalies.length,
     by_type: anomalies.reduce<Record<string, number>>((accumulator, anomaly) => {
       accumulator[anomaly.type] = (accumulator[anomaly.type] ?? 0) + 1;

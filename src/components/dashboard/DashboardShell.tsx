@@ -63,7 +63,7 @@ export function DashboardShell({
           </div>
         </div>
 
-        <div className="mx-auto grid max-w-[1680px] gap-6 px-4 py-6 lg:px-8 xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <div className="mx-auto grid max-w-[1680px] gap-6 px-4 py-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <main className="min-w-0 space-y-6">{children}</main>
           <aside className="min-w-0">{chat}</aside>
         </div>

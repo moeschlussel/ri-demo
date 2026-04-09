@@ -90,30 +90,30 @@ export async function DashboardView({ scope }: { scope: Scope }) {
       {navigationError ? <ErrorCard message={navigationError} /> : null}
 
       <section className="rounded-[2rem] border border-[color:var(--border)] bg-[var(--surface)] px-6 py-6 shadow-[0_14px_40px_rgba(15,23,42,0.05)] backdrop-blur">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4">
           <div className="space-y-3">
             <Breadcrumbs scope={scope} />
             <div className="space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
                 {scopeCopy.eyebrow}
               </p>
-              <h1 className="text-4xl font-semibold tracking-tight text-slate-950">{scopeCopy.title}</h1>
+              <h1 className="text-3xl font-semibold tracking-tight text-slate-950">{scopeCopy.title}</h1>
               <p className="max-w-3xl text-base leading-7 text-[var(--muted)]">{scopeCopy.description}</p>
             </div>
           </div>
           {financialsResult.status === "fulfilled" ? (
-            <div className="grid gap-3 rounded-2xl bg-slate-950 p-4 text-white sm:grid-cols-3">
+            <div className="inline-grid grid-cols-3 gap-3 rounded-2xl bg-slate-950 p-4 text-white">
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Profit</p>
-                <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.net_profit)}</p>
+                <p className="text-base font-semibold whitespace-nowrap">{formatCurrency(financialsResult.value.net_profit)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Margin</p>
-                <p className="text-lg font-semibold">{formatPercent(financialsResult.value.margin_pct)}</p>
+                <p className="text-base font-semibold whitespace-nowrap">{formatPercent(financialsResult.value.margin_pct)}</p>
               </div>
               <div className="space-y-1">
                 <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Travel</p>
-                <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.travel_spend)}</p>
+                <p className="text-base font-semibold whitespace-nowrap">{formatCurrency(financialsResult.value.travel_spend)}</p>
               </div>
             </div>
           ) : null}

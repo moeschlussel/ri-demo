@@ -250,7 +250,7 @@ export function HierarchySidebar({
       className={cn(
         "flex h-full flex-col bg-white/94 text-slate-900 backdrop-blur-xl",
         mobile ? "w-full" : "h-screen border-r border-[color:var(--border)] transition-[width] duration-200 ease-out",
-        compact ? "w-20" : "w-80"
+        compact ? "w-20" : "w-[22rem]"
       )}
     >
       <div className={cn("border-b border-[color:var(--border)]", compact ? "px-2 py-4" : "px-4 py-4")}>

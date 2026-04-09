@@ -1,0 +1,14 @@
+.DS_Store
+.env
+.env.local
+.env.*.local
+.next
+coverage
+dist
+RI Offline Eng Assessment.pdf
+chatgpt_final_ri_ai_cfo_dashboard_prd.md
+claude_ai_cfo_dashboard_prd_final.md
+node_modules
+npm-debug.log*
+out
+tsconfig.tsbuildinfo

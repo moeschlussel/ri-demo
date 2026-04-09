@@ -4,6 +4,8 @@ import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import {
   aggregateByMonth,
+  assertScopeId,
+  createScopedToolInputSchema,
   formatMonthKey,
   toNumber,
   toString,
@@ -11,9 +13,7 @@ import {
   type GenericRow
 } from "@/lib/tools/shared";
 
-export const GetTravelTrendInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const GetTravelTrendInput = createScopedToolInputSchema({
   months: z.number().int().min(1).max(36).optional().default(24)
 });
 
@@ -50,11 +50,11 @@ export async function getTravelTrend(input: GetTravelTrendInputType): Promise<Ge
     .order("month", { ascending: true });
 
   if (input.scopeType === "org") {
-    query = query.eq("org_id", input.scopeId ?? "");
+    query = query.eq("org_id", assertScopeId(input));
   }
 
   if (input.scopeType === "project") {
-    query = query.eq("project_id", input.scopeId ?? "");
+    query = query.eq("project_id", assertScopeId(input));
   }
 
   const rows = (await unwrapResponse(query, "Failed loading travel trend")) as MonthlyTravelTrendRow[];

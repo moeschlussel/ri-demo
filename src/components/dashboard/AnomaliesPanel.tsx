@@ -19,6 +19,7 @@ import { formatCurrency } from "@/lib/format";
 type AnomaliesData = {
   anomalies: Array<{
     expense_id: string;
+    trip_date: string;
     type: "duplicate" | "category_outlier" | "unauthorized_category" | "large_equipment";
     reason: string;
     amount: number;
@@ -90,9 +91,7 @@ export function AnomaliesPanel({
                         </div>
                         <div className="text-right">
                           <p className="font-semibold text-[var(--danger)]">{formatCurrency(row.amount)}</p>
-                          <p className="text-xs text-[var(--muted)]">
-                            {new Date(row.date).toLocaleDateString("en-US")}
-                          </p>
+                          <p className="text-xs text-[var(--muted)]">{row.trip_date}</p>
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">

@@ -68,7 +68,7 @@ function ChatPanel({
             <CardTitle>AI CFO</CardTitle>
             <CardDescription>Grounded Gemini analysis using the shared financial tool layer.</CardDescription>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClear}>
+          <Button variant="ghost" size="sm" onClick={onClear} disabled={isPending}>
             <Trash2 className="mr-1 h-4 w-4" />
             Clear
           </Button>
@@ -88,8 +88,9 @@ function ChatPanel({
                     <button
                       key={prompt}
                       type="button"
+                      disabled={isPending}
                       onClick={() => onSend(prompt)}
-                      className="w-full rounded-2xl border border-[color:var(--border)] bg-white p-3 text-left text-sm text-slate-700 transition hover:border-[var(--accent)] hover:text-slate-900"
+                      className="w-full rounded-2xl border border-[color:var(--border)] bg-white p-3 text-left text-sm text-slate-700 transition hover:border-[var(--accent)] hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {prompt}
                     </button>
@@ -124,6 +125,8 @@ function ChatPanel({
               value={input}
               onChange={(event) => onInputChange(event.target.value)}
               placeholder="Ask about margin, profit trends, or anomalies..."
+              disabled={isPending}
+              autoComplete="off"
             />
             <Button type="submit" disabled={isPending}>
               <Send className="h-4 w-4" />
@@ -157,11 +160,16 @@ export function CfoChatSidebar({ scope }: { scope: Scope }) {
   }, []);
 
   function sendMessage(overrideMessage?: string) {
+    if (isPending) {
+      return;
+    }
+
     const trimmed = (overrideMessage ?? input).trim();
     if (!trimmed) {
       return;
     }
 
+    const history = buildHistory(messages);
     const nextUserMessage: ChatMessage = {
       id: crypto.randomUUID(),
       role: "user",
@@ -181,7 +189,7 @@ export function CfoChatSidebar({ scope }: { scope: Scope }) {
           body: JSON.stringify({
             message: trimmed,
             scope,
-            history: buildHistory(messages)
+            history
           })
         });
 
@@ -222,7 +230,10 @@ export function CfoChatSidebar({ scope }: { scope: Scope }) {
           isPending={isPending}
           onInputChange={setInput}
           onSend={sendMessage}
-          onClear={() => setMessages([])}
+          onClear={() => {
+            setMessages([]);
+            setInput("");
+          }}
         />
       </div>
       <div className="fixed bottom-5 right-5 z-30 lg:hidden">
@@ -245,7 +256,10 @@ export function CfoChatSidebar({ scope }: { scope: Scope }) {
                 isPending={isPending}
                 onInputChange={setInput}
                 onSend={sendMessage}
-                onClear={() => setMessages([])}
+                onClear={() => {
+                  setMessages([]);
+                  setInput("");
+                }}
               />
             </div>
           </SheetContent>

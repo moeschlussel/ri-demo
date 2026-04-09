@@ -13,3 +13,5 @@ npm-debug.log*
 out
 supabase/.temp
 tsconfig.tsbuildinfo
+.vercel
+.env*.local

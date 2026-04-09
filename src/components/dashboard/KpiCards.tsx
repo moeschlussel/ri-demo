@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, DollarSign, Plane, Wallet } from "lucide-react";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { AnomaliesPanel } from "@/components/dashboard/AnomaliesPanel";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ type Financials = {
 type AnomaliesData = {
   anomalies: Array<{
     expense_id: string;
+    trip_date: string;
     type: "duplicate" | "category_outlier" | "unauthorized_category" | "large_equipment";
     reason: string;
     amount: number;
@@ -39,6 +40,42 @@ const cards = [
   { key: "travel_spend", label: "Travel Spend", icon: Plane },
   { key: "anomaly_count", label: "Flagged Anomalies", icon: AlertTriangle }
 ] as const;
+
+function KpiCardContent({
+  label,
+  value,
+  icon: Icon,
+  tone,
+  badgeLabel,
+  footer
+}: {
+  label: string;
+  value: string;
+  icon: (typeof cards)[number]["icon"];
+  tone: "accent" | "danger" | "warning" | "neutral";
+  badgeLabel: string;
+  footer?: ReactNode;
+}) {
+  return (
+    <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
+      <CardContent className="space-y-4 p-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-[var(--muted)]">{label}</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
+          </div>
+          <div className="rounded-2xl bg-slate-100 p-3">
+            <Icon className="h-5 w-5 text-slate-700" />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <Badge tone={tone}>{badgeLabel}</Badge>
+          {footer}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function KpiCards({
   financials,
@@ -82,44 +119,54 @@ export function KpiCards({
                     : "neutral"
                   : "neutral";
 
+          const badgeLabel =
+            card.key === "anomaly_count"
+              ? financials.anomaly_count === 0
+                ? "clear"
+                : `${formatInteger(pendingReviewCount)} pending`
+              : card.key === "margin_pct"
+                ? "margin health"
+                : "current scope";
+
+          const footer =
+            card.key === "revenue" && typeof financials.project_count === "number" ? (
+              <span className="text-xs text-[var(--muted)]">
+                {formatInteger(financials.project_count)} tracked projects
+              </span>
+            ) : isAnomalyCard ? (
+              <span className="text-xs text-[var(--muted)]">Click to inspect</span>
+            ) : null;
+
           return (
-            <button
-              type="button"
-              key={card.key}
-              onClick={isAnomalyCard ? () => setIsPanelOpen(true) : undefined}
-              className={isAnomalyCard ? "text-left" : "cursor-default text-left"}
-            >
-              <Card className="h-full transition hover:-translate-y-0.5 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
-                <CardContent className="space-y-4 p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--muted)]">{card.label}</p>
-                      <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-950">{value}</p>
-                    </div>
-                    <div className="rounded-2xl bg-slate-100 p-3">
-                      <Icon className="h-5 w-5 text-slate-700" />
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge tone={tone}>
-                      {card.key === "anomaly_count"
-                        ? financials.anomaly_count === 0
-                          ? "clear"
-                          : `${formatInteger(pendingReviewCount)} pending`
-                        : card.key === "margin_pct"
-                          ? "margin health"
-                          : "current scope"}
-                    </Badge>
-                    {card.key === "revenue" && typeof financials.project_count === "number" ? (
-                      <span className="text-xs text-[var(--muted)]">
-                        {formatInteger(financials.project_count)} tracked projects
-                      </span>
-                    ) : null}
-                    {isAnomalyCard ? <span className="text-xs text-[var(--muted)]">Click to inspect</span> : null}
-                  </div>
-                </CardContent>
-              </Card>
-            </button>
+            isAnomalyCard ? (
+              <button
+                type="button"
+                key={card.key}
+                onClick={() => setIsPanelOpen(true)}
+                className="text-left"
+                aria-label="Open anomaly review panel"
+              >
+                <KpiCardContent
+                  label={card.label}
+                  value={value}
+                  icon={Icon}
+                  tone={tone}
+                  badgeLabel={badgeLabel}
+                  footer={footer}
+                />
+              </button>
+            ) : (
+              <div key={card.key}>
+                <KpiCardContent
+                  label={card.label}
+                  value={value}
+                  icon={Icon}
+                  tone={tone}
+                  badgeLabel={badgeLabel}
+                  footer={footer}
+                />
+              </div>
+            )
           );
         })}
       </div>

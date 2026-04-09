@@ -12,6 +12,7 @@ type ExpenseBreakdownData = {
   rows: Array<{
     expense_id: string;
     technician_id: string | null;
+    trip_date?: string;
     date: string;
     category: string;
     amount: number;
@@ -92,6 +93,8 @@ export function ExpenseBreakdownTable({
 
     return true;
   });
+
+  const getDisplayDate = (row: ExpenseBreakdownData["rows"][number]): string => row.trip_date ?? row.date.slice(0, 10);
 
   return (
     <Card>
@@ -178,7 +181,7 @@ export function ExpenseBreakdownTable({
             ) : null}
             {filteredRows.map((row) => (
               <TableRow key={row.expense_id}>
-                <TableCell>{new Date(row.date).toLocaleDateString("en-US")}</TableCell>
+                <TableCell>{getDisplayDate(row)}</TableCell>
                 <TableCell>{row.category}</TableCell>
                 <TableCell>{formatCurrency(row.amount)}</TableCell>
                 <TableCell>{row.technician_name ?? "Unknown"}</TableCell>

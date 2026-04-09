@@ -2,11 +2,17 @@ import { z } from "zod";
 
 import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
-import { assertScopeId, formatMonthKey, toNumber, toString, unwrapResponse, type GenericRow } from "@/lib/tools/shared";
+import {
+  assertScopeId,
+  createScopedToolInputSchema,
+  formatMonthKey,
+  toNumber,
+  toString,
+  unwrapResponse,
+  type GenericRow
+} from "@/lib/tools/shared";
 
-export const GetProfitTrendInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const GetProfitTrendInput = createScopedToolInputSchema({
   months: z.number().int().min(1).max(36).optional().default(24)
 });
 

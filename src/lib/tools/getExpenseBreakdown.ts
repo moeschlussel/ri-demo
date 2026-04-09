@@ -3,6 +3,8 @@ import { z } from "zod";
 import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import {
+  assertScopeId,
+  createScopedToolInputSchema,
   formatDateOnly,
   normalizeExpenseCategories,
   normalizeOptionalDate,
@@ -14,9 +16,7 @@ import {
   type GenericRow
 } from "@/lib/tools/shared";
 
-export const GetExpenseBreakdownInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const GetExpenseBreakdownInput = createScopedToolInputSchema({
   category: z.string().optional(),
   categories: z.array(z.string()).optional(),
   technicianIds: z.array(z.string().uuid()).max(10).optional(),
@@ -77,11 +77,11 @@ export async function getExpenseBreakdown(
     .order("date", { ascending: false });
 
   if (input.scopeType === "org") {
-    query = query.eq("org_id", input.scopeId ?? "");
+    query = query.eq("org_id", assertScopeId(input));
   }
 
   if (input.scopeType === "project") {
-    query = query.eq("project_id", input.scopeId ?? "");
+    query = query.eq("project_id", assertScopeId(input));
   }
 
   if (categories.length === 1) {

@@ -4,6 +4,8 @@ import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import {
   TRAVEL_CATEGORIES,
+  assertScopeId,
+  createScopedToolInputSchema,
   formatDateOnly,
   normalizeExpenseCategories,
   normalizeOptionalDate,
@@ -15,9 +17,7 @@ import {
   type GenericRow
 } from "@/lib/tools/shared";
 
-export const GetTripSummaryInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const GetTripSummaryInput = createScopedToolInputSchema({
   technicianIds: z.array(z.string().uuid()).max(10).optional(),
   projectIds: z.array(z.string().uuid()).max(10).optional(),
   categories: z.array(z.string()).optional(),
@@ -92,11 +92,11 @@ export async function getTripSummary(input: GetTripSummaryInputType): Promise<Ge
     .order("date", { ascending: false });
 
   if (input.scopeType === "org") {
-    query = query.eq("org_id", input.scopeId ?? "");
+    query = query.eq("org_id", assertScopeId(input));
   }
 
   if (input.scopeType === "project") {
-    query = query.eq("project_id", input.scopeId ?? "");
+    query = query.eq("project_id", assertScopeId(input));
   }
 
   if (input.technicianIds?.length) {

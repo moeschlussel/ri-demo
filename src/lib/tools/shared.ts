@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { PostgrestSingleResponse } from "@supabase/supabase-js";
 
 import { roundNumber } from "@/lib/format";
@@ -8,6 +9,8 @@ export type ScopeInput = {
   scopeType: "global" | "org" | "project";
   scopeId?: string;
 };
+
+type ScopeInputShape = z.ZodRawShape;
 
 export const TRAVEL_CATEGORIES = ["Flight", "Hotel", "Meals"] as const;
 export const EXPENSE_CATEGORIES = ["Flight", "Hotel", "Meals", "Equipment"] as const;
@@ -65,13 +68,34 @@ export function assertScopeId(input: ScopeInput): string {
   throw new Error(`scopeId is required for ${input.scopeType} scope`);
 }
 
+export function createScopedToolInputSchema<Shape extends ScopeInputShape>(shape: Shape) {
+  return z
+    .object({
+      scopeType: z.enum(["global", "org", "project"]),
+      scopeId: z.string().uuid().optional(),
+      ...shape
+    })
+    .superRefine((value, ctx) => {
+      const scopedValue = value as ScopeInput;
+
+      if (scopedValue.scopeType !== "global" && !scopedValue.scopeId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["scopeId"],
+          message: `scopeId is required for ${scopedValue.scopeType} scope`
+        });
+      }
+    });
+}
+
 export function toNumber(value: unknown): number {
   if (typeof value === "number") {
-    return value;
+    return Number.isFinite(value) ? value : 0;
   }
 
   if (typeof value === "string" && value.length > 0) {
-    return Number(value);
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   return 0;

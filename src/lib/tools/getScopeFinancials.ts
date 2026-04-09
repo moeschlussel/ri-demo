@@ -2,12 +2,16 @@ import { z } from "zod";
 
 import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
-import { assertScopeId, toNumber, toString, unwrapResponse, type GenericRow } from "@/lib/tools/shared";
+import {
+  assertScopeId,
+  createScopedToolInputSchema,
+  toNumber,
+  toString,
+  unwrapResponse,
+  type GenericRow
+} from "@/lib/tools/shared";
 
-export const GetScopeFinancialsInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional()
-});
+export const GetScopeFinancialsInput = createScopedToolInputSchema({});
 
 export const GetScopeFinancialsOutput = z.object({
   scope: z.object({
@@ -148,4 +152,3 @@ export async function getScopeFinancials(
     anomaly_count: toNumber(projectRow.anomaly_count)
   });
 }
-

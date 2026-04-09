@@ -3,7 +3,9 @@ import { z } from "zod";
 import { roundNumber } from "@/lib/format";
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import {
+  assertScopeId,
   coerceAnomalyType,
+  createScopedToolInputSchema,
   formatDateOnly,
   normalizeExpenseCategories,
   normalizeOptionalDate,
@@ -15,9 +17,7 @@ import {
   type GenericRow
 } from "@/lib/tools/shared";
 
-export const DetectAnomaliesInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const DetectAnomaliesInput = createScopedToolInputSchema({
   technicianIds: z.array(z.string().uuid()).max(10).optional(),
   projectIds: z.array(z.string().uuid()).max(10).optional(),
   categories: z.array(z.string()).optional(),
@@ -60,25 +60,29 @@ export type DetectAnomaliesOutputType = z.infer<typeof DetectAnomaliesOutput>;
 
 export async function detectAnomalies(input: DetectAnomaliesInputType): Promise<DetectAnomaliesOutputType> {
   const supabase = getServerSupabaseClient();
-  const cutoff = subtractMonths(new Date(), input.lookbackMonths);
   const categories = normalizeExpenseCategories(input.categories ?? []);
   const exactDate = normalizeOptionalDate(input.exactDate);
   const startDate = normalizeOptionalDate(input.startDate);
   const endDate = normalizeOptionalDate(input.endDate);
+  const hasExplicitDateFilter = Boolean(exactDate || startDate || endDate);
+  const cutoff = hasExplicitDateFilter ? null : subtractMonths(new Date(), input.lookbackMonths);
 
   let query = supabase
     .from("expense_anomalies_v")
     .select("expense_id, project_id, org_id, user_id, technician_name, project_name, date, category, amount, anomaly_type, anomaly_reason")
     .eq("anomaly_flag", true)
-    .gte("date", cutoff.toISOString())
     .order("date", { ascending: false });
 
+  if (cutoff) {
+    query = query.gte("date", cutoff.toISOString());
+  }
+
   if (input.scopeType === "org") {
-    query = query.eq("org_id", input.scopeId ?? "");
+    query = query.eq("org_id", assertScopeId(input));
   }
 
   if (input.scopeType === "project") {
-    query = query.eq("project_id", input.scopeId ?? "");
+    query = query.eq("project_id", assertScopeId(input));
   }
 
   if (input.technicianIds?.length) {

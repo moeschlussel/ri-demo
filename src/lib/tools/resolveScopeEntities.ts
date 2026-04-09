@@ -4,6 +4,7 @@ import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import {
   EXPENSE_CATEGORIES,
   assertScopeId,
+  createScopedToolInputSchema,
   normalizeSearchValue,
   tokenizeSearchValue,
   toNullableString,
@@ -15,9 +16,7 @@ import {
 const ENTITY_TYPES = ["org", "project", "technician", "category"] as const;
 const RELATIONSHIP_TYPES = ["current", "child", "descendant", "available"] as const;
 
-export const ResolveScopeEntitiesInput = z.object({
-  scopeType: z.enum(["global", "org", "project"]),
-  scopeId: z.string().uuid().optional(),
+export const ResolveScopeEntitiesInput = createScopedToolInputSchema({
   queries: z.array(z.string().min(1)).min(1).max(5),
   entityTypes: z.array(z.enum(ENTITY_TYPES)).min(1).max(4).optional(),
   limitPerQuery: z.number().int().min(1).max(5).optional().default(5)

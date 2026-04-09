@@ -22,12 +22,12 @@ const ScopeSchema = z.discriminatedUnion("type", [
 ]);
 
 const ChatRequestSchema = z.object({
-  message: z.string().min(1),
+  message: z.string().trim().min(1),
   scope: ScopeSchema,
   history: z.array(
     z.object({
       role: z.enum(["user", "model"]),
-      content: z.string().min(1)
+      content: z.string().trim().min(1)
     })
   )
 });
@@ -43,14 +43,14 @@ export async function POST(request: Request): Promise<Response> {
 
     return Response.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to process chat request";
+    const isValidationError = error instanceof z.ZodError;
     return Response.json(
       {
         reply: "I couldn't process that request. Please try again.",
         toolCalls: [],
-        error: message
+        error: isValidationError ? "Invalid chat request payload." : "Failed to process chat request."
       },
-      { status: 400 }
+      { status: isValidationError ? 400 : 500 }
     );
   }
 }

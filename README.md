@@ -264,14 +264,6 @@ There is no streaming. The entire tool loop happens server-side in `src/lib/gemi
 
 That choice was intentional. Here, inspectability and correctness mattered more than streaming polish.
 
-There is also now a hard tool budget. The older implementation effectively
-stopped after 5 tool rounds. The current runtime converts that into a real
-per-answer budget with a minimum of 10 total tool calls, passes that same
-number into the system prompt, and enforces it server-side. If Gemini reaches
-the budget, the server disables further tool access and forces a final answer
-using only the data already gathered instead of returning a generic limit
-failure.
-
 ## Where The Final Implementation Diverged From The Original Plan
 
 ### Profit trend became the primary dashboard chart

@@ -44,6 +44,9 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(result);
   } catch (error) {
     const isValidationError = error instanceof z.ZodError;
+    if (!isValidationError) {
+      console.error("[chat/route] Gemini error:", error);
+    }
     return Response.json(
       {
         reply: "I couldn't process that request. Please try again.",

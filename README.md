@@ -1,153 +1,94 @@
 # RI AI CFO Dashboard
 
-RI AI CFO Dashboard is a scope-aware financial intelligence app for Robotic Imaging. It renders one dashboard across three scopes, exposes deterministic KPI and anomaly data from Supabase, and pairs that dashboard with a Gemini-powered CFO sidebar that can explain the numbers without ever becoming the source of truth for them. The architectural line is simple: SQL views and typed TypeScript handlers produce the facts; the LLM only selects tools, passes scope, and writes the explanation.
+This project is a scope-aware financial dashboard for Robotic Imaging. It supports three levels of analysis, global, organization, and project, and keeps the same product shape across all three. The dashboard surfaces deterministic KPI, anomaly, and trend data from Supabase. The Gemini-powered CFO chat is there to explain and investigate those numbers, but not to generate them.
 
-## How To Read This README
+The core architectural choice is simple: deterministic financial logic on one side, LLM orchestration on the other, and a small typed tool layer as the only bridge between them.
 
-This README is intentionally built from two sources:
+## Review Path
 
-- `chatgpt_final_ri_ai_cfo_dashboard_prd.md` (`PRD-A`) explains the original architectural constraints and MVP boundaries.
-- `claude_ai_cfo_dashboard_prd_final.md` (`PRD-B`) is the more explicit implementation spec and review rubric.
-- The repository code is the authority for **what actually shipped**.
+For code review, the fastest path through the repo is:
 
-So throughout this document:
+1. `supabase/migrations/20260409122600_init_ri_demo.sql`
+2. `supabase/migrations/20260409143000_add_reporting_views.sql`
+3. `supabase/migrations/20260409160000_add_monthly_profit_trends_view.sql`
+4. `src/lib/tools/toolRegistry.ts`
+5. `src/lib/tools/*.ts`
+6. `src/lib/gemini/runChat.ts`
+7. `src/lib/gemini/systemPrompt.ts`
+8. `src/components/dashboard/DashboardView.tsx`
+9. `src/lib/dashboard/queries.ts`
+10. `src/app/api/chat/route.ts`
 
-- **What the code does** is based on the implementation in this repo.
-- **Why it was designed that way** is based on the two PRDs.
+That sequence shows the system from the bottom up:
+
+- base schema
+- derived reporting truth
+- typed business primitives
+- LLM orchestration
+- UI composition
 
 ## Architecture Diagram
 
 ```text
-┌──────────────────────────────── Browser ────────────────────────────────┐
-│                                                                         │
-│  Routes: /, /org/[orgId], /project/[projectId]                          │
-│         │                                                               │
-│         ▼                                                               │
-│  DashboardView + DashboardShell + CFO Chat Sidebar                      │
-│         │                                                               │
-│         ├── Dashboard panels call shared tool handlers                  │
-│         │      - get_scope_financials                                   │
-│         │      - get_profit_trend                                       │
-│         │      - get_expense_breakdown                                  │
-│         │      - detect_anomalies                                       │
-│         │                                                               │
-│         ├── UI-only server queries                                      │
-│         │      - navigation tree                                        │
-│         │      - org/project child tables                               │
-│         │                                                               │
-│         └── POST /api/chat { message, scope, history }                  │
-│                    │                                                    │
-└────────────────────┼────────────────────────────────────────────────────┘
-                     ▼
-           buildSystemPrompt(scope)
-                     │
-                     ▼
-              Gemini function calling
-                     │
-                     ▼
-               toolRegistry dispatcher
-                     │
-                     ├── Zod input validation
-                     ├── tool execution
-                     └── Zod output validation
-                     │
-                     ▼
-        Supabase reporting views + deterministic TS aggregation
-                     │
-                     ├── expense_anomalies_v
-                     ├── project_financials_v
-                     ├── org_financials_v
-                     ├── monthly_travel_trends_v
-                     └── monthly_profit_trends_v
-                     │
-                     ▼
-      Base tables: organizations, users, projects, revenue, expenses
+┌────────────────────────────── Browser / Next.js ──────────────────────────────┐
+│                                                                                │
+│  /                       /org/[orgId]                 /project/[projectId]     │
+│  │                              │                                  │           │
+│  └───────────────┬──────────────┴──────────────────┬───────────────┘           │
+│                  ▼                                 ▼                           │
+│         DashboardView                      CfoChatSidebar                      │
+│                  │                                 │                           │
+│                  │                                 └── POST /api/chat          │
+│                  │                                               │             │
+│                  ├── shared analytical handlers                  ▼             │
+│                  │      - get_scope_financials          Gemini function calling │
+│                  │      - get_profit_trend                       │             │
+│                  │      - get_expense_breakdown                  ▼             │
+│                  │      - detect_anomalies                 toolRegistry        │
+│                  │                                               │             │
+│                  └── UI-only server queries                      ▼             │
+│                         - navigation tree             Zod validation + handler │
+│                         - child tables                          execution       │
+└───────────────────────────────────────────────────────┬────────────────────────┘
+                                                        ▼
+                                      Supabase reporting views + TS aggregation
+                                                        │
+                           ┌────────────────────────────┼────────────────────────────┐
+                           │                            │                            │
+                    expense_anomalies_v        project_financials_v         org_financials_v
+                    monthly_travel_trends_v    monthly_profit_trends_v
+                                                        │
+                                                        ▼
+                             base tables: organizations, users, projects, revenue, expenses
 ```
 
-## What Actually Shipped
+## What Is Implemented
 
-### App shape
+### Routes and page model
 
-- Three scope routes: `/`, `/org/[orgId]`, and `/project/[projectId]`.
-- One shared `DashboardView` that renders the dashboard for all scopes.
-- One shared `DashboardShell` that adds hierarchy navigation on the left and the CFO chat on the right.
-- One synchronous chat endpoint at `src/app/api/chat/route.ts` that returns `{ reply, toolCalls }` in a single JSON response.
+- `/` renders the global dashboard
+- `/org/[orgId]` renders the organization dashboard
+- `/project/[projectId]` renders the project dashboard
+- all three routes delegate to the same `DashboardView`
 
-### Data layer
+This was intentional. I did not want three separate dashboards with slightly different logic drifting apart over time.
 
-- Base schema lives in `supabase/migrations/20260409122600_init_ri_demo.sql`.
-- Derived financial logic lives in additive reporting views:
-  - `expense_anomalies_v`
-  - `project_financials_v`
-  - `org_financials_v`
-  - `monthly_travel_trends_v`
-  - `monthly_profit_trends_v`
-- Seed data is generated by `scripts/seed.cjs`, not `supabase/seed.sql`, so the dataset can produce 24 months of operational history plus seeded anomalies.
+### Dashboard composition
 
-### Current tool surface
-
-The shipped tool layer is larger than the original PRD minimum:
-
-| Tool | Current role in the codebase | PRD status |
-| --- | --- | --- |
-| `get_scope_financials` | KPI totals for dashboard and chat | PRD core |
-| `get_expense_breakdown` | Expense table data and audit drill-downs | PRD core |
-| `get_travel_trend` | Travel trend analysis for chat and verification | PRD core |
-| `detect_anomalies` | Deterministic anomaly list and counts | PRD core |
-| `forecast_expenses` | Trailing-average next-quarter style forecast | PRD optional |
-| `resolve_scope_entities` | Maps names like "Miami", "Aisha", or "flights" into concrete entities | Intentional extension |
-| `get_trip_summary` | Groups expense rows into trip/site-visit summaries | Intentional extension |
-| `get_profit_trend` | Monthly net profit trend used by the dashboard and chat | Intentional extension |
-
-### Current dashboard composition
-
-The shipped dashboard renders:
+The dashboard currently includes:
 
 - breadcrumbs
 - a scope header
 - 6 KPI cards
-- a **net profit trend** chart
-- a child table at global/org scope
+- a net profit trend chart
+- a child table at global and org scope
 - an expense breakdown table
 - an anomalies drawer
 - a persistent CFO chat sidebar
 
-This matters because the original PRDs centered the dashboard trend visual on **travel trend**, while the current implementation has promoted **profit trend** into the primary chart and kept travel trend as a callable tool instead.
+### Data layer
 
-## Architectural Choices
-
-### 1. Deterministic math is the boundary
-
-**What the code does**
-
-All headline numbers come from SQL views or TypeScript aggregation helpers, not from Gemini. `src/lib/tools/getScopeFinancials.ts`, `src/lib/tools/getTravelTrend.ts`, `src/lib/tools/getProfitTrend.ts`, `src/lib/tools/forecastExpenses.ts`, and `src/lib/tools/detectAnomalies.ts` all return structured numeric output before the model writes prose. `src/lib/gemini/runChat.ts` only lets Gemini decide which tool to call and then synthesize a response from the returned JSON.
-
-**Why the PRDs call for it**
-
-This is the central rule in both documents. PRD-A Section 2.1 says AI must never compute revenue, expenses, margins, averages, or anomalies. PRD-B Section 3 makes the same point as the primary non-negotiable boundary: deterministic math on one side, LLM interpretation on the other. The purpose is auditability. If the KPI card says one number, the chat must never invent a different one.
-
-### 2. Tool calling was chosen instead of NL2SQL
-
-**What the code does**
-
-`src/lib/tools/toolRegistry.ts` is the contract surface between Gemini and the business data layer. Every tool has:
-
-- a Zod input schema
-- a Zod output schema
-- a server handler
-- a Gemini function declaration
-
-`runToolCall()` validates both ends of the boundary and returns structured errors when a tool fails. Gemini never receives raw schema metadata and never gets a general-purpose SQL execution tool.
-
-**Why the PRDs call for it**
-
-PRD-A Section 2.2 and PRD-B Sections 3, 8.5, 8.5.1, and 8.7 are explicit here: tools must be business primitives, not raw data wrappers, and the LLM must never write SQL. This keeps the model’s latitude narrow and inspectable. It is the reason the app can show real tool call badges in the UI and defend itself during review.
-
-### 3. The base schema stays fixed and reporting logic is additive
-
-**What the code does**
-
-The five assessment tables remain intact:
+The base schema is kept simple and unchanged:
 
 - `organizations`
 - `users`
@@ -155,118 +96,218 @@ The five assessment tables remain intact:
 - `revenue`
 - `expenses`
 
-All derived logic is layered on top through indexes and views in the migrations. The anomaly rules live in `expense_anomalies_v`; project and org financial rollups live in `project_financials_v` and `org_financials_v`; time-series reporting lives in `monthly_travel_trends_v` and `monthly_profit_trends_v`.
+All derived business logic is layered on top through reporting views:
 
-**Why the PRDs call for it**
+- `expense_anomalies_v`
+- `project_financials_v`
+- `org_financials_v`
+- `monthly_travel_trends_v`
+- `monthly_profit_trends_v`
 
-PRD-B Principle P6 and Section 7 require the base schema to be untouchable. PRD-A Section 11 says the same thing more simply: keep the base tables and add views. Architecturally, this keeps business logic centralized, reviewable, and reusable without mutating the assessment’s provided schema.
+### Tool layer
 
-### 4. Scope is ambient context, not a user burden
+The tool layer is the contract between Gemini and the business data:
 
-**What the code does**
+| Tool | Responsibility |
+| --- | --- |
+| `get_scope_financials` | headline KPI totals for the current scope |
+| `get_expense_breakdown` | expense rows with filtering and anomaly metadata |
+| `get_travel_trend` | monthly travel cost trend data |
+| `detect_anomalies` | deterministic anomaly findings |
+| `forecast_expenses` | trailing-average expense forecast |
+| `resolve_scope_entities` | entity and category resolution from natural language |
+| `get_trip_summary` | trip/site-visit summaries grouped from expense rows |
+| `get_profit_trend` | monthly net profit trend data |
+| `query_expenses` | flexible raw expense query with field selection, grouping, aggregation, and filters — used when no other tool covers the question |
 
-The app resolves scope from the route first:
+## The Main Architectural Decisions
 
-- `src/app/page.tsx` uses global scope
-- `src/app/org/[orgId]/page.tsx` resolves organization scope
-- `src/app/project/[projectId]/page.tsx` resolves project scope
+### 1. Deterministic math is the source of truth
 
-That scope then flows through both the UI and chat layers. `src/lib/types.ts` defines a `Scope` union. `src/app/api/chat/route.ts` requires scope in the request body. `src/lib/gemini/systemPrompt.ts` explains the current scope to Gemini, and `normalizeScopedArgs()` in `src/lib/gemini/runChat.ts` injects the route’s `scopeId` into tool calls when appropriate.
+This is the most important decision in the repo.
 
-The prompt goes beyond the original PRD by enforcing strict scope discipline: if the user is on one scoped page and asks about a different org or project outside that visible scope, the assistant is told to refuse rather than guess.
+Revenue, expenses, net profit, margin, anomaly counts, and trend series are all computed outside the model. The model never calculates those numbers itself. It only decides which tool to call and how to explain the returned result.
 
-**Why the PRDs call for it**
+You can see that boundary in:
 
-PRD-A Section 2.5 and PRD-B Principle P4 / Section 8.3 say the user should not have to restate scope when the page already implies it. The reason is product coherence. A CFO assistant on an org page should already know that "our margin" means that org unless the user explicitly says otherwise.
+- `src/lib/tools/getScopeFinancials.ts`
+- `src/lib/tools/getExpenseBreakdown.ts`
+- `src/lib/tools/detectAnomalies.ts`
+- `src/lib/tools/getTravelTrend.ts`
+- `src/lib/tools/getProfitTrend.ts`
+- `src/lib/tools/forecastExpenses.ts`
 
-### 5. Anomaly detection is deterministic first and interpretive second
+This matters because it keeps the UI and chat aligned. If the KPI card says one thing and the chat says another, the system loses credibility immediately.
 
-**What the code does**
+### 2. Tool calling instead of NL2SQL
 
-`expense_anomalies_v` hard-codes four anomaly rules:
+I kept the model away from raw SQL and raw schema access.
+
+`src/lib/tools/toolRegistry.ts` is the only bridge between the LLM and the data layer. Every tool has:
+
+- a Zod input schema
+- a Zod output schema
+- a handler
+- a Gemini function declaration
+
+That does two useful things:
+
+- it narrows the model's freedom to a small set of business primitives
+- it makes the behavior inspectable and testable
+
+For a project like this, that is a much stronger architecture than letting the model improvise queries.
+
+### 3. The reporting layer lives in SQL views, not in React components
+
+I deliberately pushed reusable financial logic into Supabase views instead of scattering it across server components, route handlers, or prompts.
+
+That includes:
+
+- anomaly flagging in `expense_anomalies_v`
+- project rollups in `project_financials_v`
+- org rollups in `org_financials_v`
+- monthly travel trend aggregation
+- monthly profit trend aggregation
+
+This keeps the logic centralized and easy to inspect. It also means the financial layer can be verified independently of the UI.
+
+### 4. Scope is route-derived and ambient
+
+The current page determines the working scope. That scope is resolved once and then passed through:
+
+- the dashboard
+- the chat request body
+- the system prompt
+- the tool arguments
+
+The user should not have to keep restating context the app already knows.
+
+Scope enforcement is layered. The system prompt tells the model what scope it is in and instructs it not to query outside it. The server independently enforces this in `normalizeScopedArgs` (which always stamps the correct scope ID onto matching tool calls) and in `assertWithinAuthorityScope` (which rejects any tool call whose requested scope falls outside the page scope before the handler runs). The prompt handles intent; the server handles enforcement.
+
+Relevant files:
+
+- `src/lib/types.ts`
+- `src/app/page.tsx`
+- `src/app/org/[orgId]/page.tsx`
+- `src/app/project/[projectId]/page.tsx`
+- `src/lib/gemini/systemPrompt.ts`
+- `src/lib/gemini/runChat.ts`
+- `src/lib/tools/toolRegistry.ts`
+
+### 5. Anomaly detection is deterministic first, interpretive second
+
+Anomalies are not generated by the model.
+
+They come from four fixed rules in `expense_anomalies_v`:
 
 - unauthorized category
 - duplicate expense
 - large equipment
 - category outlier
 
-The anomaly KPI card, anomalies drawer, expense table badges, and chat audit responses all consume the same anomaly source. `src/components/dashboard/KpiCards.tsx` opens `src/components/dashboard/AnomaliesPanel.tsx`, and the panel explicitly tells the user these are the same flags the AI sees.
+The dashboard reads those flags. The chat reads those same flags. The LLM can add interpretation, but it is not allowed to invent new anomalies or contradict the deterministic count.
 
-**Why the PRDs call for it**
+That separation is important because anomaly review is one of the places where users will naturally compare UI and chat side by side.
 
-PRD-A Section 2.4 and Section 7, plus PRD-B Principle P5 and Sections 7.3 / 8.7, make this boundary very explicit. The UI truth must come from deterministic rules; the AI may add interpretation, but it may not invent new anomalies or contradict the count that the dashboard shows.
+### 6. One dashboard component across three scopes
 
-### 6. One reusable dashboard is used across all three scopes
+All three routes render `DashboardView`.
 
-**What the code does**
+That gives the project a consistent mental model:
 
-All three page routes are thin wrappers around `DashboardView`. `DashboardView` uses the same structural composition at every scope and adjusts its content based on `scope.type`. The child table switches between organizations, projects, or no child table at all. The expense breakdown and anomalies views remain present at every level.
+- same page structure
+- same KPI semantics
+- same chat behavior
+- same drill-down pattern
 
-**Why the PRDs call for it**
+The difference between scopes is handled by data and conditional rendering, not by cloning screens.
 
-PRD-A Section 4.1 and PRD-B Sections 4.1, 9.1, and 9.2 all push toward one reusable dashboard instead of multiple custom screens. The reason is architectural discipline. Shared composition reduces duplicated logic, keeps the drill-down mental model clean, and makes scope inheritance in chat straightforward.
+### 7. Shared analytical handlers, separate UI plumbing
 
-### 7. Core analytical panels share handlers with AI, but UI-only lists stay out of the tool layer
+I did not force every query into the tool layer.
 
-**What the code does**
-
-This is one place where the implementation is more nuanced than the current README used to suggest.
-
-`DashboardView` directly calls shared tool handlers for the high-signal analytical modules:
+The analytical parts that matter to both dashboard and chat are shared:
 
 - `get_scope_financials`
 - `get_profit_trend`
 - `get_expense_breakdown`
 - `detect_anomalies`
 
-But navigation and child tables are handled separately in `src/lib/dashboard/queries.ts`, which reads Supabase directly for:
+But navigation and child-table loading live separately in `src/lib/dashboard/queries.ts` because those are UI concerns, not business reasoning primitives.
 
-- hierarchy navigation
-- organization rollup table
-- project drill-down table
-- route-to-scope resolution
+That split keeps the tool layer honest. It contains capabilities the model should have, not every query the UI happens to need.
 
-That means the analytical truth is shared, while purely navigational or UI-structural queries remain outside the chat tool surface.
+### 9. Server-side authority scope enforcement
 
-**Why the PRDs call for it**
+The system prompt alone is not sufficient to prevent a model from querying out-of-scope data. Prompt injection in a user message can override prompt-level instructions.
 
-PRD-A Section 2.3 and PRD-B Principle P1 / Principle P3 / Section 10.2 require UI and AI to share the same source of truth for financial logic. At the same time, PRD-B Section 8.5.1 explicitly says UI-only concerns like child breakdowns should not become tools. The current implementation follows that split: shared analytical handlers for shared business logic, direct queries for UI structure.
+The enforcement is hardened in two places in `src/lib/tools/toolRegistry.ts`:
 
-### 8. The chat route is synchronous, server-driven, and inspectable
+`normalizeScopedArgs` always stamps the authority scope ID onto any tool call whose `scopeType` matches the current page scope. The model cannot override this by passing a different ID.
 
-**What the code does**
+`assertWithinAuthorityScope` runs before every tool handler. It checks that the requested `scopeType` and `scopeId` fall within the page authority:
 
-`src/app/api/chat/route.ts` validates the request, passes it into `runCfoChat()`, and returns a single JSON payload. `runCfoChat()` runs the tool loop server-side, allows up to 5 rounds, and collects the full tool call history. `src/components/chat/CfoChatSidebar.tsx` and `src/components/chat/ToolCallBadge.tsx` render the reply and show which tools were called.
+- global page → any scope is allowed
+- org page → only that org or a project that belongs to it (verified by a database lookup)
+- project page → only that exact project
 
-There is no streaming. The user sends one request and gets one response.
+If the check fails, the tool returns an error object to the model instead of data. The model cannot retrieve anything the page scope does not permit, regardless of what the user message contains.
 
-**Why the PRDs call for it**
+### 10. Synchronous chat over streaming chat
 
-PRD-B Sections 4.2, 8.2, 9.7, and 10.1 explicitly require synchronous JSON-in / JSON-out chat. The review reason is straightforward: it is simpler, easier to debug, and makes the tool-calling behavior visible during the assessment demo.
+The chat route returns one JSON payload containing:
 
-## Intentional Extensions Beyond The Original PRD Shape
+- the final reply
+- the tool calls made during the turn
 
-This repo no longer matches the PRD literally in every detail. These are the most important deviations.
+There is no streaming. The entire tool loop happens server-side in `src/lib/gemini/runChat.ts`.
 
-### `resolve_scope_entities`
+That choice was intentional. Here, inspectability and correctness mattered more than streaming polish.
 
-This tool was added even though the PRDs wanted four core tools plus one optional tool. Architecturally, it is a defensible extension because it preserves the PRD boundary rather than breaking it. Without a resolver, the model would have to guess UUIDs or fuzzy-match names on its own, which would undermine the "AI is orchestrator, not calculator / query engine" principle. This tool converts fuzzy language into deterministic IDs and canonical categories before any financial tool runs.
+## Where The Final Implementation Diverged From The Original Plan
 
-### `get_trip_summary`
+### Profit trend became the primary dashboard chart
 
-This is also an extension. It groups expense rows into trip/site-visit summaries by project, technician, and date. The PRDs talk about business questions and field operations, but they do not define a trip-level primitive directly. The current implementation adds one so the model can answer "what happened on that trip?" without reconstructing trip groupings in prose or abusing the raw expense tool.
+The original PRD leaned more heavily toward travel trend as the main dashboard visual.
 
-### `get_profit_trend` and `monthly_profit_trends_v`
+In the final build, I made net profit trend the primary chart and kept travel trend available through the tool layer. The reasoning was product-driven: net profit felt like the more important top-line CFO narrative, while travel trend still remained available for operational drill-down.
 
-This is the largest product-level deviation. PRD-B expected the dashboard’s primary chart to be travel trend. The shipped dashboard now surfaces **net profit trend** instead, backed by a dedicated reporting view and a `get_profit_trend` tool. Travel trend still exists and remains available to chat and verification flows.
+That change is backed by:
 
-Because the PRDs do not explicitly justify this change, the best explanation is the one implied by the implementation itself: the dashboard now prioritizes bottom-line momentum as the primary CFO chart while keeping travel trend available as a secondary analytical capability. This rationale is therefore an inference from the shipped code, not a direct PRD requirement.
+- `supabase/migrations/20260409160000_add_monthly_profit_trends_view.sql`
+- `src/lib/tools/getProfitTrend.ts`
+- `src/components/dashboard/NetProfitTrendChart.tsx`
 
-### Prompt and scope strictness
+### `resolve_scope_entities` was added to preserve the boundary
 
-The current prompt is stricter than the PRD baseline about cross-scope questions. On org/project pages, it tells the model not to answer about out-of-scope entities at all. That is a security and trust improvement over a looser interpretation of ambient scope.
+This tool was not part of the smallest possible PRD tool list, but I added it because it keeps entity resolution deterministic. Without it, the model would need to guess what "Miami", "Aisha", or "flights" refer to before calling the real financial tools.
 
-## Database Design Summary
+That would make the architecture weaker, not simpler.
+
+### `query_expenses` was added as an escape hatch for flexible analysis
+
+The eight structured tools cover the most common questions, but there are cross-cuts they cannot do — per-technician per-category breakdowns, weekly trends, top spenders by amount, or any grouping not pre-built.
+
+`query_expenses` fills that gap. Gemini specifies which fields to return, how to group and aggregate, and what filters to apply. TypeScript runs the actual query. Gemini never writes SQL and never accesses the raw schema. Scope enforcement is identical to every other tool.
+
+The model is instructed to prefer the more targeted tools when they cover the question and to reach for `query_expenses` only when they do not.
+
+### `get_trip_summary` was added as a real business primitive
+
+There is a meaningful difference between:
+
+- showing expense rows
+- explaining what happened on a technician trip or site visit
+
+`get_trip_summary` exists so the model can answer the second class of question cleanly instead of reconstructing trips ad hoc from raw expenses.
+
+### Scope handling is stricter than the original baseline
+
+The prompt is deliberately strict when the user is on an org or project page and asks about something clearly outside that visible scope. Instead of answering loosely, the model is told to say it does not have visibility there.
+
+That creates a cleaner trust model.
+
+## Database Summary
 
 ### Base tables
 
@@ -276,7 +317,7 @@ The current prompt is stricter than the PRD baseline about cross-scope questions
 - `revenue`
 - `expenses`
 
-### Indexes added
+### Indexes
 
 The initial migration adds indexes on:
 
@@ -289,17 +330,17 @@ The initial migration adds indexes on:
 - `expenses.date`
 - `expenses.category`
 
-### Derived views
+### Reporting views
 
 | View | Purpose |
 | --- | --- |
-| `expense_anomalies_v` | deterministic anomaly flagging and enriched expense rows |
-| `project_financials_v` | per-project revenue, expenses, net profit, margin, travel, equipment, anomaly counts |
-| `org_financials_v` | per-organization rollup of project financials |
-| `monthly_travel_trends_v` | monthly travel spend and per-survey travel averages |
-| `monthly_profit_trends_v` | monthly revenue, expense, and net profit series |
+| `expense_anomalies_v` | anomaly flags plus enriched expense rows |
+| `project_financials_v` | project-level revenue, expenses, margin, travel, equipment, anomalies |
+| `org_financials_v` | org-level rollup of project financials |
+| `monthly_travel_trends_v` | monthly travel totals and per-survey averages |
+| `monthly_profit_trends_v` | monthly revenue, expenses, and net profit |
 
-## Repository Shape
+## Repo Layout
 
 ```text
 src/
@@ -325,9 +366,9 @@ scripts/
   smoke-tools.ts
 ```
 
-## How To Run Locally
+## Running Locally
 
-### 1. Install dependencies
+### 1. Install
 
 ```bash
 npm install
@@ -341,24 +382,24 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 GEMINI_API_KEY=your-gemini-api-key
 ```
 
-If you want the seed script to target a different Supabase project than `NEXT_PUBLIC_SUPABASE_URL`, also set:
+If the seed script should target a different Supabase project than `NEXT_PUBLIC_SUPABASE_URL`, also set:
 
 ```bash
 SUPABASE_URL=https://your-project.supabase.co
 ```
 
-### 3. Apply schema and reporting migrations
+### 3. Apply migrations
 
-If you are using the linked Supabase project:
+If using the linked Supabase project:
 
 ```bash
 supabase link --project-ref tzrsypzpeurtqbepvptl
 supabase db push --include-all
 ```
 
-### 4. Seed data if needed
+### 4. Seed data
 
-`supabase/seed.sql` is intentionally blank. The dataset is generated by the script below:
+`supabase/seed.sql` is blank on purpose. The dataset is generated with:
 
 ```bash
 npm run seed
@@ -369,7 +410,7 @@ That script creates:
 - 2 organizations
 - 4 projects
 - 24 months of revenue and expense history
-- seeded anomalies used by the assessment prompts
+- the seeded anomalies used by the demo prompts
 
 ### 5. Start the app
 
@@ -377,7 +418,7 @@ That script creates:
 npm run dev
 ```
 
-### 6. Verify the core architecture
+### 6. Verify the important paths
 
 ```bash
 npm run typecheck
@@ -385,7 +426,7 @@ npm run build
 npm run verify:tools
 ```
 
-## How To Deploy
+## Deployment
 
 Deploy the repo root to Vercel.
 
@@ -395,72 +436,64 @@ Deploy the repo root to Vercel.
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`
 
-### Deployment checklist
+### Deployment flow
 
 1. Import the repo into Vercel.
-2. Add the environment variables above.
+2. Add the environment variables.
 3. Deploy the root project.
 4. Verify:
    - `/` loads the global dashboard
-   - `/org/[orgId]` drills into an organization
-   - `/project/[projectId]` drills into a project
+   - `/org/[orgId]` loads the organization dashboard
+   - `/project/[projectId]` loads the project dashboard
    - chat returns grounded answers and shows tool badges
 
-## Assessment Demo Notes
+## Demo Prompts
 
-### PRD-required demo prompts
-
-These are still the prompts the PRDs expect the system to answer well:
+These are the main prompts the app should answer well:
 
 1. `What is our overall net profit margin across all Home Depot locations?`
 2. `How have average travel costs per survey changed over the last 24 months, and what's the projected expense run-rate for the upcoming quarter?`
 3. `Run an audit on technician expenses over the last year. Are there any duplicate flight billings or unusually large equipment purchases we should investigate?`
 
-### Current in-product starter prompts
-
-The shipped sidebar currently seeds:
+The in-product starter prompts are slightly different because the final product leans more heavily into profit trend:
 
 1. `What's our overall net profit margin across all Home Depot locations?`
 2. `How has monthly net profit changed over the last 24 months, and where has momentum weakened most?`
 3. `Run an audit on technician expenses over the last year. Any duplicate flight billings or unusually large equipment purchases?`
 
-That difference reflects the product-level shift toward profit trend as the primary visual narrative.
+## What I Left Out
 
-## What Was Intentionally Cut
-
-The repo stays disciplined around the PRD time budget and scope rules. It intentionally excludes:
+I kept the scope disciplined and left out:
 
 - authentication and user management
 - CRUD flows
-- NL2SQL or raw schema exposure
+- NL2SQL / raw schema exposure
 - streaming chat
 - real-time subscriptions
-- heavy forecasting models
+- heavyweight forecasting
 - pagination / virtualization
 - extra routes outside the three core scopes
-- decorative UI work that does not improve the architectural review story
+- UI polish work that did not improve the core architecture
 
-## Verification Summary
+## Verification
 
-The repository includes explicit verification hooks for the architecture:
+The repo already has verification hooks for the core architecture:
 
 - `npm run typecheck`
 - `npm run build`
 - `npm run verify:tools`
 
-`scripts/smoke-tools.ts` exercises:
+`scripts/smoke-tools.ts` covers:
 
-- global, org, and project scope financials
+- global, org, and project financials
 - entity resolution
 - filtered expenses and anomalies
 - trip summaries
 - travel trend
 - profit trend
-- forecast generation
+- forecasting
 
-That matters because this project is being graded more on architectural integrity than on sheer feature count.
-
-## Submission Placeholders
+## Submission Links
 
 - GitHub repo URL: `TODO`
 - Live Vercel URL: `TODO`

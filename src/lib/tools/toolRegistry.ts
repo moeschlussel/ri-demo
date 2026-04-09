@@ -1,6 +1,9 @@
 import type { FunctionDeclaration } from "@google/genai";
 import { z } from "zod";
 
+import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
+import type { Scope } from "@/lib/types";
+
 import {
   detectAnomalies,
   DetectAnomaliesInput,
@@ -29,6 +32,12 @@ import {
   ResolveScopeEntitiesOutput
 } from "@/lib/tools/resolveScopeEntities";
 import { getTravelTrend, GetTravelTrendInput, GetTravelTrendOutput } from "@/lib/tools/getTravelTrend";
+import {
+  queryExpenses,
+  QueryExpensesInput,
+  QueryExpensesOutput,
+  ALLOWED_FIELDS
+} from "@/lib/tools/queryExpenses";
 
 function createScopeProperties() {
   return {
@@ -42,6 +51,34 @@ function createScopeProperties() {
       description: "Required for organization and project scope. Omit for global scope."
     }
   };
+}
+
+async function assertWithinAuthorityScope(
+  requestedScopeType: string,
+  requestedScopeId: string | undefined,
+  authorityScope: Scope
+): Promise<void> {
+  if (authorityScope.type === "global") return;
+  if (!requestedScopeId) return;
+
+  if (authorityScope.type === "org") {
+    if (requestedScopeType === "org" && requestedScopeId === authorityScope.id) return;
+    if (requestedScopeType === "project") {
+      const { data } = await getServerSupabaseClient()
+        .from("projects")
+        .select("id")
+        .eq("id", requestedScopeId)
+        .eq("org_id", authorityScope.id)
+        .single();
+      if (data) return;
+    }
+    throw new Error(`Access denied: scope ${requestedScopeType}/${requestedScopeId} is outside your authority`);
+  }
+
+  if (authorityScope.type === "project") {
+    if (requestedScopeType === "project" && requestedScopeId === authorityScope.id) return;
+    throw new Error(`Access denied: scope ${requestedScopeType}/${requestedScopeId} is outside your authority`);
+  }
 }
 
 export const toolRegistry = {
@@ -336,6 +373,100 @@ export const toolRegistry = {
       }
     }
   },
+  query_expenses: {
+    description: "Flexible raw expense query with field selection, grouping, aggregation, and filters.",
+    inputSchema: QueryExpensesInput,
+    outputSchema: QueryExpensesOutput,
+    handler: queryExpenses,
+    geminiDeclaration: {
+      name: "query_expenses",
+      description:
+        "Query expense data with full control over which fields to return, how to group and aggregate results, and what filters to apply. Use this when the other tools do not cover what you need — for example, per-technician per-category breakdowns, weekly trends, top spenders by amount, or custom cross-cuts of the data. Always request only the fields and rows you actually need.",
+      parametersJsonSchema: {
+        type: "object",
+        properties: {
+          ...createScopeProperties(),
+          fields: {
+            type: "array",
+            description: `Which fields to include in each returned row. Choose only what you need. Allowed values: ${ALLOWED_FIELDS.join(", ")}.`,
+            items: {
+              type: "string",
+              enum: [...ALLOWED_FIELDS]
+            }
+          },
+          groupBy: {
+            type: "array",
+            description:
+              "When set, rows are aggregated into groups instead of returned individually. Options: technician, project, category, month, week, date. Combine multiple to get multi-dimensional breakdowns.",
+            items: {
+              type: "string",
+              enum: ["technician", "project", "category", "month", "week", "date"]
+            }
+          },
+          aggregations: {
+            type: "array",
+            description: "Which aggregations to compute per group when groupBy is set. Defaults to sum and count.",
+            items: {
+              type: "string",
+              enum: ["sum", "count", "avg", "min", "max"]
+            }
+          },
+          categories: {
+            type: "array",
+            description: "Filter by expense categories. Conversational labels like flights, food, or gear are accepted.",
+            items: { type: "string" }
+          },
+          technicianIds: {
+            type: "array",
+            description: "Filter by technician IDs returned by resolve_scope_entities.",
+            items: { type: "string" }
+          },
+          projectIds: {
+            type: "array",
+            description: "Filter by project IDs returned by resolve_scope_entities.",
+            items: { type: "string" }
+          },
+          startDate: {
+            type: "string",
+            description: "Start date filter in YYYY-MM-DD format."
+          },
+          endDate: {
+            type: "string",
+            description: "End date filter in YYYY-MM-DD format."
+          },
+          onlyAnomalies: {
+            type: "boolean",
+            description: "When true, only include anomalous expense rows."
+          },
+          minAmount: {
+            type: "number",
+            description: "Only include expenses at or above this amount."
+          },
+          maxAmount: {
+            type: "number",
+            description: "Only include expenses at or below this amount."
+          },
+          sortBy: {
+            type: "string",
+            enum: ["amount", "date"],
+            description: "Sort individual rows by this field. Defaults to date."
+          },
+          sortDir: {
+            type: "string",
+            enum: ["asc", "desc"],
+            description: "Sort direction. Defaults to desc."
+          },
+          limit: {
+            type: "number",
+            description: "Maximum rows or groups to return. Max 500. Request only what you need.",
+            minimum: 1,
+            maximum: 500
+          }
+        },
+        required: ["scopeType"]
+      }
+    }
+  },
   forecast_expenses: {
     description: "Return a deterministic next-quarter style expense forecast using trailing averages.",
     inputSchema: ForecastExpensesInput,
@@ -373,7 +504,11 @@ export const geminiFunctionDeclarations = Object.values(toolRegistry).map(
   (tool) => tool.geminiDeclaration
 );
 
-export async function runToolCall(name: string, rawArgs: unknown): Promise<Record<string, unknown>> {
+export async function runToolCall(
+  name: string,
+  rawArgs: unknown,
+  authorityScope: Scope
+): Promise<Record<string, unknown>> {
   const tool = toolRegistry[name as ToolName] as
     | undefined
     | {
@@ -383,19 +518,23 @@ export async function runToolCall(name: string, rawArgs: unknown): Promise<Recor
         geminiDeclaration: FunctionDeclaration;
       };
   if (!tool) {
-    return {
-      error: `Unknown tool: ${name}`
-    };
+    return { error: `Unknown tool: ${name}` };
   }
 
   try {
+    const args = typeof rawArgs === "object" && rawArgs !== null ? rawArgs as Record<string, unknown> : {};
+    const requestedScopeType = typeof args.scopeType === "string" ? args.scopeType : undefined;
+    const requestedScopeId = typeof args.scopeId === "string" ? args.scopeId : undefined;
+
+    if (requestedScopeType) {
+      await assertWithinAuthorityScope(requestedScopeType, requestedScopeId, authorityScope);
+    }
+
     const parsedInput = tool.inputSchema.parse(rawArgs);
     const result = await tool.handler(parsedInput);
     return tool.outputSchema.parse(result) as Record<string, unknown>;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown tool error";
-    return {
-      error: message
-    };
+    return { error: message };
   }
 }

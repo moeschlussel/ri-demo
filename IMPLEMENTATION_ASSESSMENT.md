@@ -277,7 +277,7 @@ PRD-B Section 7.2 specifies 8 indexes to add. Need to verify these were included
 | Base schema untouched, all derived logic in 4 SQL views | PASS | Views are correct |
 | Exactly 4-5 tools, no NL2SQL, no forbidden tools | PARTIAL | 6 tools (extra `resolve_scope_entities`) — defensible |
 | LLM performs no arithmetic | PASS | All numbers from tools |
-| Both seeded anomalies flagged (Marcus Thorne unauthorized, Aisha Patel duplicate) | PASS | Anomaly rules catch both |
+| Both seeded anomalies flagged (Marcus Thorne equipment spike, Aisha Patel duplicate) | PASS | Anomaly rules catch both |
 | All 3 demo questions return correct answers | NEEDS TESTING | Should work, needs live verification |
 | Tool call badges visible in chat UI | PASS | `ToolCallBadge` component present |
 | Tool errors cause AI to stop gracefully | PASS | Error handling in `runToolCall` and system prompt |

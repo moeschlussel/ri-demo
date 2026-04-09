@@ -20,6 +20,10 @@ function getRandomDate(monthsAgo) {
   return date.toISOString();
 }
 
+function getFixedDate(year, monthIndex, day) {
+  return new Date(Date.UTC(year, monthIndex, day, 14, 14, 0)).toISOString();
+}
+
 async function clearTable(supabase, table) {
   const { error } = await supabase.from(table).delete().not("id", "is", null);
   if (error) {
@@ -29,6 +33,17 @@ async function clearTable(supabase, table) {
 
 async function insertOne(supabase, table, payload) {
   const { error } = await supabase.from(table).insert(payload);
+  if (error) {
+    throw new Error(`Insert error for ${table}: ${error.message}`);
+  }
+}
+
+async function insertMany(supabase, table, payloads) {
+  if (!payloads.length) {
+    return;
+  }
+
+  const { error } = await supabase.from(table).insert(payloads);
   if (error) {
     throw new Error(`Insert error for ${table}: ${error.message}`);
   }
@@ -123,17 +138,50 @@ async function seed() {
     throw new Error(`Project error: ${projectErr?.message}`);
   }
 
+  const techByName = new Map(techs.map((tech) => [tech.full_name, tech]));
+  const projectByName = new Map(projects.map((project) => [project.name, project]));
+
+  const marcusThorne = techByName.get("Marcus Thorne");
+  const aishaPatel = techByName.get("Aisha Patel");
+  const austinProject = projectByName.get("Store #24051 - Austin, TX");
+  const denverProject = projectByName.get("Store #39201 - Denver, CO");
+  const seattleProject = projectByName.get("HD #1102 - Seattle, WA");
+
+  if (!marcusThorne || !aishaPatel || !austinProject || !denverProject || !seattleProject) {
+    throw new Error("Expected seeded technicians and projects were not returned");
+  }
+
+  const revenueRows = [];
+  const expenseRows = [];
+
   for (let monthOffset = 23; monthOffset >= 0; monthOffset -= 1) {
     const inflationMultiplier = monthOffset < 12 ? 1.15 : 1.0;
 
     for (const project of projects) {
       const validTechs = techs.filter((tech) => tech.org_id === project.org_id);
-      const activeTech =
+      let activeTech =
         validTechs[Math.floor(Math.random() * validTechs.length)];
-      const surveyDate = getRandomDate(monthOffset);
+      let surveyDate = getRandomDate(monthOffset);
       const baseFee = project.org_id === orgHD.id ? 12500 : 8500;
 
-      await insertOne(supabase, "revenue", {
+      const isMarcusEquipmentAnomalyMonth = monthOffset === 8
+        && (project.id === austinProject.id || project.id === denverProject.id);
+      const isAishaDuplicateMonth = monthOffset === 3 && project.id === seattleProject.id;
+
+      if (isMarcusEquipmentAnomalyMonth) {
+        activeTech = marcusThorne;
+        surveyDate =
+          project.id === austinProject.id
+            ? getFixedDate(2025, 7, 13)
+            : getFixedDate(2025, 7, 12);
+      }
+
+      if (isAishaDuplicateMonth) {
+        activeTech = aishaPatel;
+        surveyDate = getFixedDate(2026, 0, 15);
+      }
+
+      revenueRows.push({
         project_id: project.id,
         amount: baseFee + Math.floor(Math.random() * 1000),
         description: "Monthly Lidar & Imaging Survey",
@@ -161,23 +209,17 @@ async function seed() {
 
       for (const item of tripExpenses) {
         let finalAmount = item.amount;
-        let finalCategory = item.category;
 
         if (
-          activeTech.full_name === "Marcus Thorne" &&
-          monthOffset === 8 &&
-          item.category === "Equipment"
+          isMarcusEquipmentAnomalyMonth && item.category === "Equipment"
         ) {
           finalAmount = 7500;
-          finalCategory = "Unauthorized Hardware Purchase";
         }
 
         if (
-          activeTech.full_name === "Aisha Patel" &&
-          monthOffset === 3 &&
-          item.category === "Flight"
+          isAishaDuplicateMonth && item.category === "Flight"
         ) {
-          await insertOne(supabase, "expenses", {
+          expenseRows.push({
             project_id: project.id,
             user_id: activeTech.id,
             amount: Number(finalAmount.toFixed(2)),
@@ -186,16 +228,19 @@ async function seed() {
           });
         }
 
-        await insertOne(supabase, "expenses", {
+        expenseRows.push({
           project_id: project.id,
           user_id: activeTech.id,
           amount: Number(finalAmount.toFixed(2)),
-          category: finalCategory,
+          category: item.category,
           date: surveyDate
         });
       }
     }
   }
+
+  await insertMany(supabase, "revenue", revenueRows);
+  await insertMany(supabase, "expenses", expenseRows);
 
   const totalRevenue = await supabase
     .from("revenue")

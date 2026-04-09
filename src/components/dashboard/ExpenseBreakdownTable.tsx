@@ -28,6 +28,14 @@ type ExpenseBreakdownData = {
 };
 
 const UNKNOWN_TECHNICIAN_VALUE = "__unknown-technician__";
+const STANDARD_EXPENSE_CATEGORIES = ["Equipment", "Flight", "Hotel", "Meals"] as const;
+const OTHER_CATEGORY_LABEL = "Other";
+
+function getCategoryFilterValue(category: string): string {
+  return STANDARD_EXPENSE_CATEGORIES.includes(category as (typeof STANDARD_EXPENSE_CATEGORIES)[number])
+    ? category
+    : OTHER_CATEGORY_LABEL;
+}
 
 export function ExpenseBreakdownTable({
   scope,
@@ -42,7 +50,7 @@ export function ExpenseBreakdownTable({
   const [selectedTechnician, setSelectedTechnician] = useState<string>("all");
   const [onlyAnomalies, setOnlyAnomalies] = useState(false);
 
-  const categories = Array.from(new Set(data?.rows.map((row) => row.category) ?? [])).sort();
+  const categories = Array.from(new Set((data?.rows ?? []).map((row) => getCategoryFilterValue(row.category)))).sort();
   const technicianLabelCounts = new Map<string, number>();
   const technicianOptions = Array.from(
     new Map(
@@ -79,7 +87,7 @@ export function ExpenseBreakdownTable({
   }, [selectedTechnician, technicianOptions]);
 
   const filteredRows = (data?.rows ?? []).filter((row) => {
-    if (selectedCategory !== "all" && row.category !== selectedCategory) {
+    if (selectedCategory !== "all" && getCategoryFilterValue(row.category) !== selectedCategory) {
       return false;
     }
 

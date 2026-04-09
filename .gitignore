@@ -11,4 +11,5 @@ claude_ai_cfo_dashboard_prd_final.md
 node_modules
 npm-debug.log*
 out
+supabase/.temp
 tsconfig.tsbuildinfo

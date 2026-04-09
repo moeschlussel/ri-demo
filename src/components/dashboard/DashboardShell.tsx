@@ -24,7 +24,7 @@ export function DashboardShell({
 
   return (
     <div className="min-h-screen bg-[var(--background)] lg:flex">
-      <div className="hidden lg:block lg:sticky lg:top-0 lg:h-screen lg:shrink-0">
+      <div className="hidden lg:block lg:shrink-0">
         <HierarchySidebar
           scope={scope}
           navigation={navigation}

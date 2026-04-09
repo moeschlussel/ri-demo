@@ -162,8 +162,8 @@ function ProjectRow({
             : "text-slate-700 hover:bg-white hover:text-slate-950"
         )}
       >
-        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", projectStatusDotClass(project.status))} />
-        <span className="min-w-0 flex-1 truncate font-medium">{project.name}</span>
+        <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", active ? "bg-white/70" : projectStatusDotClass(project.status))} />
+        <span className={cn("min-w-0 flex-1 truncate font-medium", active ? "text-white" : "text-slate-700")}>{project.name}</span>
         <FolderKanban className={cn("h-3.5 w-3.5 shrink-0", active ? "text-white/70" : "text-slate-400")} />
       </Link>
     </li>
@@ -248,8 +248,8 @@ export function HierarchySidebar({
   return (
     <aside
       className={cn(
-        "flex h-full flex-col bg-white/94 text-slate-900 backdrop-blur-xl",
-        mobile ? "w-full" : "h-screen border-r border-[color:var(--border)] transition-[width] duration-200 ease-out",
+        "flex flex-col bg-white/94 text-slate-900 backdrop-blur-xl",
+        mobile ? "w-full h-full" : "sticky top-0 h-screen border-r border-[color:var(--border)] transition-[width] duration-200 ease-out",
         compact ? "w-20" : "w-[22rem]"
       )}
     >

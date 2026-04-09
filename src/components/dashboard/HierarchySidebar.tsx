@@ -119,8 +119,8 @@ function ExpandedTopLink({
         {icon}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{label}</span>
-        <span className={cn("mt-1 block text-xs leading-5", active ? "text-slate-200" : "text-[var(--muted)]")}>
+        <span className={cn("block truncate text-sm font-semibold", active ? "text-white" : "text-slate-900")}>{label}</span>
+        <span className={cn("mt-1 block text-xs leading-5", active ? "text-slate-300" : "text-[var(--muted)]")}>
           {description}
         </span>
       </span>

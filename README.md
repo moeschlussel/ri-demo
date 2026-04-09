@@ -19,10 +19,12 @@ flowchart LR
 
 ### Tool calling instead of NL2SQL
 
-The LLM does not see schema details and never writes free SQL. It gets exactly five business tools:
+The LLM does not see schema details and never writes free SQL. It gets exactly seven business tools:
 
+- `resolve_scope_entities`
 - `get_scope_financials`
 - `get_expense_breakdown`
+- `get_trip_summary`
 - `get_travel_trend`
 - `detect_anomalies`
 - `forecast_expenses`
@@ -42,9 +44,10 @@ The base schema remains untouched. This keeps derived business logic centralized
 
 ### The AI never does math
 
-Revenue, expenses, profit, margin, travel trends, forecasts, and anomaly counts are computed in SQL or TypeScript only. Gemini’s role is limited to:
+Revenue, expenses, profit, margin, travel trends, forecasts, anomaly counts, and trip rollups are computed in SQL or TypeScript only. Gemini’s role is limited to:
 
 - deciding which tool(s) to call
+- resolving natural-language entities like "Miami", "Aisha", or "flights" into exact ids or canonical filters before querying
 - passing the correct scope
 - synthesizing the returned results into a CFO-style answer
 

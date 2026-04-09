@@ -1,7 +1,7 @@
 export type Scope =
   | { type: "global" }
   | { type: "org"; id: string; name: string }
-  | { type: "project"; id: string; name: string; orgName: string };
+  | { type: "project"; id: string; name: string; orgId: string; orgName: string };
 
 export type ScopeType = Scope["type"];
 
@@ -45,3 +45,21 @@ export type ChildProjectRow = {
   anomalyCount: number;
 };
 
+export type NavigationProjectNode = {
+  id: string;
+  name: string;
+  status: string;
+};
+
+export type NavigationOrganizationNode = {
+  id: string;
+  name: string;
+  projectCount: number;
+  projects: NavigationProjectNode[];
+};
+
+export type NavigationTree = {
+  organizationCount: number;
+  projectCount: number;
+  organizations: NavigationOrganizationNode[];
+};

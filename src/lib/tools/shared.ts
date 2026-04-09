@@ -10,12 +10,52 @@ export type ScopeInput = {
 };
 
 export const TRAVEL_CATEGORIES = ["Flight", "Hotel", "Meals"] as const;
+export const EXPENSE_CATEGORIES = ["Flight", "Hotel", "Meals", "Equipment"] as const;
 export const ANOMALY_TYPES = [
   "duplicate",
   "category_outlier",
   "unauthorized_category",
   "large_equipment"
 ] as const;
+const CATEGORY_ALIAS_MAP: Record<string, (typeof EXPENSE_CATEGORIES)[number]> = {
+  airfare: "Flight",
+  airfares: "Flight",
+  airline: "Flight",
+  airlines: "Flight",
+  air: "Flight",
+  plane: "Flight",
+  planes: "Flight",
+  ticket: "Flight",
+  tickets: "Flight",
+  flight: "Flight",
+  flights: "Flight",
+  hotel: "Hotel",
+  hotels: "Hotel",
+  lodging: "Hotel",
+  room: "Hotel",
+  rooms: "Hotel",
+  stay: "Hotel",
+  stays: "Hotel",
+  meal: "Meals",
+  meals: "Meals",
+  food: "Meals",
+  foods: "Meals",
+  lunch: "Meals",
+  lunches: "Meals",
+  dinner: "Meals",
+  dinners: "Meals",
+  breakfast: "Meals",
+  breakfasts: "Meals",
+  "per diem": "Meals",
+  perdiem: "Meals",
+  equipment: "Equipment",
+  equip: "Equipment",
+  gear: "Equipment",
+  hardware: "Equipment",
+  scanner: "Equipment",
+  scanners: "Equipment",
+  lidar: "Equipment"
+};
 
 export function assertScopeId(input: ScopeInput): string {
   if (input.scopeType === "global" || input.scopeId) {
@@ -55,6 +95,61 @@ export function toString(value: unknown, fallback = ""): string {
 
 export function toNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
+}
+
+export function normalizeSearchValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+export function tokenizeSearchValue(value: string): string[] {
+  return normalizeSearchValue(value)
+    .split(" ")
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+export function normalizeExpenseCategory(value: string): string {
+  const normalized = normalizeSearchValue(value);
+  return CATEGORY_ALIAS_MAP[normalized] ?? value;
+}
+
+export function normalizeExpenseCategories(values: string[] = []): string[] {
+  return [...new Set(values.map((value) => normalizeExpenseCategory(value)).filter(Boolean))];
+}
+
+function toDateOnly(value: string): string {
+  const trimmed = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new Error(`Invalid date value: ${value}`);
+  }
+
+  return parsed.toISOString().slice(0, 10);
+}
+
+export function normalizeOptionalDate(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return toDateOnly(value);
+}
+
+export function formatDateOnly(value: string | Date): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) {
+    return typeof value === "string" ? value.slice(0, 10) : "";
+  }
+
+  return date.toISOString().slice(0, 10);
 }
 
 export function formatMonthKey(value: string | Date): string {

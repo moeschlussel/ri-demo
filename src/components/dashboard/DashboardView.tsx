@@ -3,12 +3,13 @@ import { AlertCircle, Building2, FolderKanban } from "lucide-react";
 import { Breadcrumbs } from "@/components/dashboard/Breadcrumbs";
 import { ChildTable } from "@/components/dashboard/ChildTable";
 import { ExpenseBreakdownTable } from "@/components/dashboard/ExpenseBreakdownTable";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { KpiCards } from "@/components/dashboard/KpiCards";
 import { TravelTrendChart } from "@/components/dashboard/TravelTrendChart";
 import { CfoChatSidebar } from "@/components/chat/CfoChatSidebar";
 import { Card, CardContent } from "@/components/ui/card";
 import { formatCurrency, formatPercent } from "@/lib/format";
-import { getChildOrganizationRows, getChildProjectRows } from "@/lib/dashboard/queries";
+import { getChildOrganizationRows, getChildProjectRows, getNavigationTree } from "@/lib/dashboard/queries";
 import { toolRegistry } from "@/lib/tools/toolRegistry";
 import type { ChildOrganizationRow, ChildProjectRow, Scope } from "@/lib/types";
 
@@ -37,7 +38,7 @@ function ErrorCard({ message }: { message: string }) {
 export async function DashboardView({ scope }: { scope: Scope }) {
   const toolInput = scopeToToolInput(scope);
 
-  const [financialsResult, travelTrendResult, expenseBreakdownResult, anomaliesResult, childRowsResult] =
+  const [financialsResult, travelTrendResult, expenseBreakdownResult, anomaliesResult, childRowsResult, navigationResult] =
     await Promise.allSettled([
       toolRegistry.get_scope_financials.handler(toolInput),
       toolRegistry.get_travel_trend.handler({ ...toolInput, months: 24 }),
@@ -47,7 +48,8 @@ export async function DashboardView({ scope }: { scope: Scope }) {
         ? getChildOrganizationRows()
         : scope.type === "org"
           ? getChildProjectRows(scope.id)
-          : Promise.resolve(null)
+          : Promise.resolve(null),
+      getNavigationTree()
     ]);
 
   const scopeCopy =
@@ -76,84 +78,111 @@ export async function DashboardView({ scope }: { scope: Scope }) {
     scope.type === "org" && childRowsResult.status === "fulfilled"
       ? (childRowsResult.value as ChildProjectRow[])
       : [];
+  const navigationError =
+    navigationResult.status === "rejected"
+      ? navigationResult.reason instanceof Error
+        ? navigationResult.reason.message
+        : "Failed loading navigation."
+      : undefined;
+
+  const content = (
+    <>
+      {navigationError ? <ErrorCard message={navigationError} /> : null}
+
+      <section className="rounded-[2rem] border border-[color:var(--border)] bg-[var(--surface)] px-6 py-6 shadow-[0_14px_40px_rgba(15,23,42,0.05)] backdrop-blur">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-3">
+            <Breadcrumbs scope={scope} />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
+                {scopeCopy.eyebrow}
+              </p>
+              <h1 className="text-4xl font-semibold tracking-tight text-slate-950">{scopeCopy.title}</h1>
+              <p className="max-w-3xl text-base leading-7 text-[var(--muted)]">{scopeCopy.description}</p>
+            </div>
+          </div>
+          {financialsResult.status === "fulfilled" ? (
+            <div className="grid gap-3 rounded-2xl bg-slate-950 p-4 text-white sm:grid-cols-3">
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Profit</p>
+                <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.net_profit)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Margin</p>
+                <p className="text-lg font-semibold">{formatPercent(financialsResult.value.margin_pct)}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Travel</p>
+                <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.travel_spend)}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      {financialsResult.status === "fulfilled" ? (
+        <KpiCards
+          financials={financialsResult.value}
+          anomalies={anomaliesResult.status === "fulfilled" ? anomaliesResult.value : undefined}
+          anomaliesError={
+            anomaliesResult.status === "rejected"
+              ? anomaliesResult.reason instanceof Error
+                ? anomaliesResult.reason.message
+                : "Failed loading anomaly details."
+              : undefined
+          }
+        />
+      ) : (
+        <ErrorCard message={financialsResult.reason instanceof Error ? financialsResult.reason.message : "Failed loading KPIs."} />
+      )}
+
+      <TravelTrendChart
+        data={travelTrendResult.status === "fulfilled" ? travelTrendResult.value : undefined}
+        error={travelTrendResult.status === "rejected" ? "Failed loading travel trend data." : undefined}
+      />
+
+      {scope.type === "global" ? (
+        <ChildTable scope={scope} organizations={childOrganizations} />
+      ) : scope.type === "org" ? (
+        <ChildTable scope={scope} projects={childProjects} />
+      ) : (
+        <Card>
+          <CardContent className="flex items-center gap-4 p-5 text-sm text-[var(--muted)]">
+            <FolderKanban className="h-5 w-5 text-[var(--accent)]" />
+            Project scope hides the child table and prioritizes individual expense detail instead.
+          </CardContent>
+        </Card>
+      )}
+
+      <ExpenseBreakdownTable
+        scope={scope}
+        data={expenseBreakdownResult.status === "fulfilled" ? expenseBreakdownResult.value : undefined}
+        error={expenseBreakdownResult.status === "rejected" ? "Failed loading expense breakdown." : undefined}
+      />
+
+      {scope.type === "global" ? (
+        <Card>
+          <CardContent className="flex items-center gap-3 p-5 text-sm text-[var(--muted)]">
+            <Building2 className="h-5 w-5 text-[var(--accent)]" />
+            The global view inherits scope into chat automatically. Ask about profitability, travel trends, or audit findings without naming the organization unless you want to override the current page.
+          </CardContent>
+        </Card>
+      ) : null}
+    </>
+  );
+
+  if (navigationResult.status === "fulfilled") {
+    return (
+      <DashboardShell scope={scope} navigation={navigationResult.value} chat={<CfoChatSidebar scope={scope} />}>
+        {content}
+      </DashboardShell>
+    );
+  }
 
   return (
-    <div className="min-h-screen px-4 py-6 lg:px-6">
-      <div className="mx-auto grid max-w-[1680px] gap-6 lg:grid-cols-[minmax(0,1fr)_23rem]">
-        <main className="min-w-0 space-y-6">
-          <section className="rounded-[2rem] border border-[color:var(--border)] bg-[var(--surface)] px-6 py-6 shadow-[0_14px_40px_rgba(15,23,42,0.05)] backdrop-blur">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <div className="space-y-3">
-                <Breadcrumbs scope={scope} />
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--accent)]">
-                    {scopeCopy.eyebrow}
-                  </p>
-                  <h1 className="text-4xl font-semibold tracking-tight text-slate-950">{scopeCopy.title}</h1>
-                  <p className="max-w-3xl text-base leading-7 text-[var(--muted)]">{scopeCopy.description}</p>
-                </div>
-              </div>
-              {financialsResult.status === "fulfilled" ? (
-                <div className="grid gap-3 rounded-2xl bg-slate-950 p-4 text-white sm:grid-cols-3">
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Profit</p>
-                    <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.net_profit)}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Margin</p>
-                    <p className="text-lg font-semibold">{formatPercent(financialsResult.value.margin_pct)}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-xs uppercase tracking-[0.08em] text-slate-300">Travel</p>
-                    <p className="text-lg font-semibold">{formatCurrency(financialsResult.value.travel_spend)}</p>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          </section>
-
-          {financialsResult.status === "fulfilled" ? (
-            <KpiCards
-              financials={financialsResult.value}
-              anomalies={anomaliesResult.status === "fulfilled" ? anomaliesResult.value : undefined}
-            />
-          ) : (
-            <ErrorCard message={financialsResult.reason instanceof Error ? financialsResult.reason.message : "Failed loading KPIs."} />
-          )}
-
-          <TravelTrendChart
-            data={travelTrendResult.status === "fulfilled" ? travelTrendResult.value : undefined}
-            error={travelTrendResult.status === "rejected" ? "Failed loading travel trend data." : undefined}
-          />
-
-          {scope.type === "global" ? (
-            <ChildTable scope={scope} organizations={childOrganizations} />
-          ) : scope.type === "org" ? (
-            <ChildTable scope={scope} projects={childProjects} />
-          ) : (
-            <Card>
-              <CardContent className="flex items-center gap-4 p-5 text-sm text-[var(--muted)]">
-                <FolderKanban className="h-5 w-5 text-[var(--accent)]" />
-                Project scope hides the child table and prioritizes individual expense detail instead.
-              </CardContent>
-            </Card>
-          )}
-
-          <ExpenseBreakdownTable
-            scope={scope}
-            data={expenseBreakdownResult.status === "fulfilled" ? expenseBreakdownResult.value : undefined}
-            error={expenseBreakdownResult.status === "rejected" ? "Failed loading expense breakdown." : undefined}
-          />
-
-          {scope.type === "global" ? (
-            <Card>
-              <CardContent className="flex items-center gap-3 p-5 text-sm text-[var(--muted)]">
-                <Building2 className="h-5 w-5 text-[var(--accent)]" />
-                The global view inherits scope into chat automatically. Ask about profitability, travel trends, or audit findings without naming the organization unless you want to override the current page.
-              </CardContent>
-            </Card>
-          ) : null}
-        </main>
+    <div className="min-h-screen bg-[var(--background)] px-4 py-6 lg:px-8">
+      <div className="mx-auto grid max-w-[1680px] gap-6 xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <main className="min-w-0 space-y-6">{content}</main>
         <aside className="min-w-0">
           <CfoChatSidebar scope={scope} />
         </aside>

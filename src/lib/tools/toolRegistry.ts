@@ -16,11 +16,17 @@ import {
   GetExpenseBreakdownInput,
   GetExpenseBreakdownOutput
 } from "@/lib/tools/getExpenseBreakdown";
+import { getTripSummary, GetTripSummaryInput, GetTripSummaryOutput } from "@/lib/tools/getTripSummary";
 import {
   getScopeFinancials,
   GetScopeFinancialsInput,
   GetScopeFinancialsOutput
 } from "@/lib/tools/getScopeFinancials";
+import {
+  resolveScopeEntities,
+  ResolveScopeEntitiesInput,
+  ResolveScopeEntitiesOutput
+} from "@/lib/tools/resolveScopeEntities";
 import { getTravelTrend, GetTravelTrendInput, GetTravelTrendOutput } from "@/lib/tools/getTravelTrend";
 
 function createScopeProperties() {
@@ -38,6 +44,49 @@ function createScopeProperties() {
 }
 
 export const toolRegistry = {
+  resolve_scope_entities: {
+    description:
+      "Resolve organizations, projects, technicians, and expense categories mentioned in natural language inside the current scope.",
+    inputSchema: ResolveScopeEntitiesInput,
+    outputSchema: ResolveScopeEntitiesOutput,
+    handler: resolveScopeEntities,
+    geminiDeclaration: {
+      name: "resolve_scope_entities",
+      description:
+        "Resolve natural-language mentions such as cities, project nicknames, technician names, and expense categories into exact ids or canonical values within the current scope.",
+      parametersJsonSchema: {
+        type: "object",
+        properties: {
+          ...createScopeProperties(),
+          queries: {
+            type: "array",
+            description:
+              "One or more phrases to resolve. These can be short names like ['Miami', 'Seattle'] or longer natural-language snippets like ['how was the miami project'].",
+            items: {
+              type: "string"
+            },
+            minItems: 1,
+            maxItems: 5
+          },
+          entityTypes: {
+            type: "array",
+            description: "Optional filter for which scope types to search.",
+            items: {
+              type: "string",
+              enum: ["org", "project", "technician", "category"]
+            }
+          },
+          limitPerQuery: {
+            type: "number",
+            description: "Maximum number of matches to return per query.",
+            minimum: 1,
+            maximum: 5
+          }
+        },
+        required: ["scopeType", "queries"]
+      }
+    }
+  },
   get_scope_financials: {
     description: "Return deterministic headline KPI values for the requested scope.",
     inputSchema: GetScopeFinancialsInput,
@@ -60,7 +109,8 @@ export const toolRegistry = {
     handler: getExpenseBreakdown,
     geminiDeclaration: {
       name: "get_expense_breakdown",
-      description: "Return individual expense rows for a scope, optionally filtered by category or anomaly-only mode.",
+      description:
+        "Return individual expense rows for a scope, optionally filtered by category, technician, project, date, or anomaly-only mode.",
       parametersJsonSchema: {
         type: "object",
         properties: {
@@ -68,6 +118,39 @@ export const toolRegistry = {
           category: {
             type: "string",
             description: "Optional category filter such as Flight, Hotel, Meals, or Equipment."
+          },
+          categories: {
+            type: "array",
+            description: "Optional category filters. Conversational labels like flights, hotel, food, or gear are acceptable.",
+            items: {
+              type: "string"
+            }
+          },
+          technicianIds: {
+            type: "array",
+            description: "Optional technician ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          projectIds: {
+            type: "array",
+            description: "Optional project ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          exactDate: {
+            type: "string",
+            description: "Optional exact trip date in YYYY-MM-DD format."
+          },
+          startDate: {
+            type: "string",
+            description: "Optional start date in YYYY-MM-DD format."
+          },
+          endDate: {
+            type: "string",
+            description: "Optional end date in YYYY-MM-DD format."
           },
           onlyAnomalies: {
             type: "boolean",
@@ -78,6 +161,71 @@ export const toolRegistry = {
             description: "Maximum number of rows to return.",
             minimum: 1,
             maximum: 500
+          }
+        },
+        required: ["scopeType"]
+      }
+    }
+  },
+  get_trip_summary: {
+    description: "Return grouped trip summaries for scoped expense data.",
+    inputSchema: GetTripSummaryInput,
+    outputSchema: GetTripSummaryOutput,
+    handler: getTripSummary,
+    geminiDeclaration: {
+      name: "get_trip_summary",
+      description:
+        "Return trip-level summaries grouped by project, technician, and trip date. Use this when the user asks about a trip, site visit, or what happened on a specific survey run.",
+      parametersJsonSchema: {
+        type: "object",
+        properties: {
+          ...createScopeProperties(),
+          technicianIds: {
+            type: "array",
+            description: "Optional technician ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          projectIds: {
+            type: "array",
+            description: "Optional project ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          categories: {
+            type: "array",
+            description: "Optional category filters. Conversational labels like flights, hotel, food, or gear are acceptable.",
+            items: {
+              type: "string"
+            }
+          },
+          exactDate: {
+            type: "string",
+            description: "Optional exact trip date in YYYY-MM-DD format."
+          },
+          startDate: {
+            type: "string",
+            description: "Optional start date in YYYY-MM-DD format."
+          },
+          endDate: {
+            type: "string",
+            description: "Optional end date in YYYY-MM-DD format."
+          },
+          onlyAnomalies: {
+            type: "boolean",
+            description: "When true, only use anomalous expense rows when constructing trips."
+          },
+          includeExpenses: {
+            type: "boolean",
+            description: "When true, include the underlying expense rows for each returned trip."
+          },
+          limitTrips: {
+            type: "number",
+            description: "Maximum number of trips to return.",
+            minimum: 1,
+            maximum: 100
           }
         },
         required: ["scopeType"]
@@ -114,11 +262,45 @@ export const toolRegistry = {
     handler: detectAnomalies,
     geminiDeclaration: {
       name: "detect_anomalies",
-      description: "Return deterministic flagged expense anomalies for the requested scope and lookback period.",
+      description:
+        "Return deterministic flagged expense anomalies for the requested scope and lookback period, optionally filtered by project, technician, category, or date.",
       parametersJsonSchema: {
         type: "object",
         properties: {
           ...createScopeProperties(),
+          technicianIds: {
+            type: "array",
+            description: "Optional technician ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          projectIds: {
+            type: "array",
+            description: "Optional project ids returned by resolve_scope_entities.",
+            items: {
+              type: "string"
+            }
+          },
+          categories: {
+            type: "array",
+            description: "Optional category filters. Conversational labels like flights, hotel, food, or gear are acceptable.",
+            items: {
+              type: "string"
+            }
+          },
+          exactDate: {
+            type: "string",
+            description: "Optional exact trip date in YYYY-MM-DD format."
+          },
+          startDate: {
+            type: "string",
+            description: "Optional start date in YYYY-MM-DD format."
+          },
+          endDate: {
+            type: "string",
+            description: "Optional end date in YYYY-MM-DD format."
+          },
           lookbackMonths: {
             type: "number",
             description: "How many months to look back when auditing expenses.",

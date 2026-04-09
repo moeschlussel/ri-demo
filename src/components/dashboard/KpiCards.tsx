@@ -19,6 +19,7 @@ type Financials = {
 };
 
 type AnomaliesData = {
+  review_enabled: boolean;
   anomalies: Array<{
     expense_id: string;
     type: "duplicate" | "category_outlier" | "unauthorized_category" | "large_equipment";
@@ -28,6 +29,8 @@ type AnomaliesData = {
     technician_name: string | null;
     project_name: string | null;
     date: string;
+    review_status: "unreviewed" | "verified";
+    reviewed_at: string | null;
   }>;
 };
 
@@ -42,12 +45,16 @@ const cards = [
 
 export function KpiCards({
   financials,
-  anomalies
+  anomalies,
+  anomaliesError
 }: {
   financials: Financials;
   anomalies?: AnomaliesData;
+  anomaliesError?: string;
 }) {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const unreviewedCount =
+    anomalies?.anomalies.filter((anomaly) => anomaly.review_status === "unreviewed").length ?? financials.anomaly_count;
 
   return (
     <>
@@ -67,15 +74,17 @@ export function KpiCards({
               ? financials.net_profit >= 0
                 ? "accent"
                 : "danger"
-              : card.key === "margin_pct"
-                ? financials.margin_pct < 5
-                  ? "danger"
-                  : financials.margin_pct < 20
-                    ? "warning"
-                    : "accent"
-                : card.key === "anomaly_count"
-                  ? financials.anomaly_count > 0
+                : card.key === "margin_pct"
+                  ? financials.margin_pct < 5
                     ? "danger"
+                    : financials.margin_pct < 20
+                      ? "warning"
+                      : "accent"
+                : card.key === "anomaly_count"
+                  ? financials.anomaly_count > 0 && unreviewedCount > 0
+                    ? "danger"
+                    : financials.anomaly_count > 0
+                      ? "accent"
                     : "neutral"
                   : "neutral";
 
@@ -100,9 +109,11 @@ export function KpiCards({
                   <div className="flex items-center justify-between gap-2">
                     <Badge tone={tone}>
                       {card.key === "anomaly_count"
-                        ? financials.anomaly_count > 0
-                          ? "review required"
-                          : "clear"
+                        ? financials.anomaly_count === 0
+                          ? "clear"
+                          : unreviewedCount > 0
+                            ? `${formatInteger(unreviewedCount)} pending`
+                            : "all verified"
                         : card.key === "margin_pct"
                           ? "margin health"
                           : "current scope"}
@@ -120,8 +131,7 @@ export function KpiCards({
           );
         })}
       </div>
-      <AnomaliesPanel open={isPanelOpen} onOpenChange={setIsPanelOpen} data={anomalies} />
+      <AnomaliesPanel open={isPanelOpen} onOpenChange={setIsPanelOpen} data={anomalies} error={anomaliesError} />
     </>
   );
 }
-

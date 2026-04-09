@@ -16,6 +16,7 @@ const ScopeSchema = z.discriminatedUnion("type", [
     type: z.literal("project"),
     id: z.string().uuid(),
     name: z.string(),
+    orgId: z.string().uuid(),
     orgName: z.string()
   })
 ]);
@@ -53,4 +54,3 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 }
-

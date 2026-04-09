@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,10 @@ import { formatCurrency } from "@/lib/format";
 import type { Scope } from "@/lib/types";
 
 type ExpenseBreakdownData = {
+  review_enabled: boolean;
   rows: Array<{
     expense_id: string;
+    technician_id: string | null;
     date: string;
     category: string;
     amount: number;
@@ -20,10 +22,14 @@ type ExpenseBreakdownData = {
     anomaly_flag: boolean;
     anomaly_type: string | null;
     anomaly_reason: string | null;
+    anomaly_review_status: "unreviewed" | "verified";
+    anomaly_reviewed_at: string | null;
   }>;
   total_count: number;
   total_amount: number;
 };
+
+const UNKNOWN_TECHNICIAN_VALUE = "__unknown-technician__";
 
 export function ExpenseBreakdownTable({
   scope,
@@ -35,11 +41,51 @@ export function ExpenseBreakdownTable({
   error?: string;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedTechnician, setSelectedTechnician] = useState<string>("all");
   const [onlyAnomalies, setOnlyAnomalies] = useState(false);
 
   const categories = Array.from(new Set(data?.rows.map((row) => row.category) ?? [])).sort();
+  const technicianLabelCounts = new Map<string, number>();
+  const technicianOptions = Array.from(
+    new Map(
+      (data?.rows ?? []).map((row) => [
+        row.technician_id ?? UNKNOWN_TECHNICIAN_VALUE,
+        row.technician_name?.trim() || "Unknown technician"
+      ])
+    ).entries()
+  )
+    .map(([value, label]) => {
+      technicianLabelCounts.set(label, (technicianLabelCounts.get(label) ?? 0) + 1);
+
+      return { value, label };
+    })
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map(({ value, label }) => ({
+      value,
+      label:
+        technicianLabelCounts.get(label)! > 1 && value !== UNKNOWN_TECHNICIAN_VALUE
+          ? `${label} (${value.slice(0, 8)})`
+          : label
+    }));
+
+  useEffect(() => {
+    if (selectedCategory !== "all" && !categories.includes(selectedCategory)) {
+      setSelectedCategory("all");
+    }
+  }, [categories, selectedCategory]);
+
+  useEffect(() => {
+    if (selectedTechnician !== "all" && !technicianOptions.some((option) => option.value === selectedTechnician)) {
+      setSelectedTechnician("all");
+    }
+  }, [selectedTechnician, technicianOptions]);
+
   const filteredRows = (data?.rows ?? []).filter((row) => {
     if (selectedCategory !== "all" && row.category !== selectedCategory) {
+      return false;
+    }
+
+    if ((row.technician_id ?? UNKNOWN_TECHNICIAN_VALUE) !== selectedTechnician && selectedTechnician !== "all") {
       return false;
     }
 
@@ -77,6 +123,21 @@ export function ExpenseBreakdownTable({
               </select>
             </label>
             <label className="flex items-center gap-2 text-sm text-slate-700">
+              <span>Technician</span>
+              <select
+                value={selectedTechnician}
+                onChange={(event) => setSelectedTechnician(event.target.value)}
+                className="h-10 rounded-xl border border-[color:var(--border)] bg-white px-3"
+              >
+                <option value="all">All technicians</option>
+                {technicianOptions.map((technician) => (
+                  <option key={technician.value} value={technician.value}>
+                    {technician.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
                 type="checkbox"
                 checked={onlyAnomalies}
@@ -90,6 +151,11 @@ export function ExpenseBreakdownTable({
       </CardHeader>
       <CardContent className="space-y-4 overflow-x-auto">
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+        {!error && data && !data.review_enabled ? (
+          <p className="text-sm text-[var(--warning)]">
+            Verification status is unavailable until the latest database migration is applied.
+          </p>
+        ) : null}
         {!error ? (
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--muted)]">
             <span>{filteredRows.length} visible rows</span>
@@ -128,7 +194,12 @@ export function ExpenseBreakdownTable({
                 <TableCell>
                   {row.anomaly_flag ? (
                     <div className="space-y-2">
-                      <Badge tone="danger">{row.anomaly_type?.replaceAll("_", " ") ?? "flagged"}</Badge>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone="danger">{row.anomaly_type?.replaceAll("_", " ") ?? "flagged"}</Badge>
+                        <Badge tone={row.anomaly_review_status === "verified" ? "accent" : "warning"}>
+                          {row.anomaly_review_status === "verified" ? "verified" : "needs review"}
+                        </Badge>
+                      </div>
                       <p className="max-w-md text-xs leading-5 text-[var(--muted)]">{row.anomaly_reason}</p>
                     </div>
                   ) : (
@@ -143,4 +214,3 @@ export function ExpenseBreakdownTable({
     </Card>
   );
 }
-

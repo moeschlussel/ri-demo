@@ -1,6 +1,13 @@
 import { getServerSupabaseClient } from "@/lib/supabase/serverClient";
 import { roundNumber } from "@/lib/format";
-import type { ChildOrganizationRow, ChildProjectRow, Scope } from "@/lib/types";
+import type {
+  ChildOrganizationRow,
+  ChildProjectRow,
+  NavigationOrganizationNode,
+  NavigationProjectNode,
+  NavigationTree,
+  Scope
+} from "@/lib/types";
 import { toNumber, toString, unwrapResponse, type GenericRow } from "@/lib/tools/shared";
 
 type NamedRow = GenericRow & {
@@ -11,6 +18,13 @@ type NamedRow = GenericRow & {
 type ProjectRow = GenericRow & {
   id: string;
   org_id: string;
+};
+
+type NavigationProjectRow = GenericRow & {
+  id: string;
+  org_id: string;
+  name: string;
+  status: string | null;
 };
 
 export async function getOrganizationScope(orgId: string): Promise<Scope | null> {
@@ -53,6 +67,7 @@ export async function getProjectScope(projectId: string): Promise<Scope | null> 
     type: "project",
     id: projectRow.id,
     name: toString(projectRow.name, "Project"),
+    orgId: projectRow.org_id,
     orgName: organization ? toString((organization as NamedRow).name, "Organization") : "Organization"
   };
 }
@@ -109,3 +124,44 @@ export async function getChildProjectRows(orgId: string): Promise<ChildProjectRo
   }));
 }
 
+export async function getNavigationTree(): Promise<NavigationTree> {
+  const supabase = getServerSupabaseClient();
+  const [organizationRows, projectRows] = await Promise.all([
+    unwrapResponse(
+      supabase.from("organizations").select("id, name").order("name", { ascending: true }),
+      "Failed loading navigation organizations"
+    ),
+    unwrapResponse(
+      supabase.from("projects").select("id, org_id, name, status").order("name", { ascending: true }),
+      "Failed loading navigation projects"
+    )
+  ]);
+
+  const projectsByOrganization = new Map<string, NavigationProjectNode[]>();
+  for (const row of projectRows as NavigationProjectRow[]) {
+    const project: NavigationProjectNode = {
+      id: toString(row.id),
+      name: toString(row.name, "Project"),
+      status: toString(row.status, "active")
+    };
+    const currentProjects = projectsByOrganization.get(row.org_id) ?? [];
+    currentProjects.push(project);
+    projectsByOrganization.set(row.org_id, currentProjects);
+  }
+
+  const organizations = (organizationRows as NamedRow[]).map<NavigationOrganizationNode>((row) => {
+    const projects = projectsByOrganization.get(row.id) ?? [];
+    return {
+      id: row.id,
+      name: toString(row.name, "Organization"),
+      projectCount: projects.length,
+      projects
+    };
+  });
+
+  return {
+    organizationCount: organizations.length,
+    projectCount: (projectRows as NavigationProjectRow[]).length,
+    organizations
+  };
+}

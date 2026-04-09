@@ -12,7 +12,11 @@ function describeScope(scope: Scope): string {
   return `Project scope for ${scope.name} within ${scope.orgName} (scopeId: ${scope.id}).`;
 }
 
-export function buildSystemPrompt(scope: Scope): string {
+export function buildSystemPrompt(
+  scope: Scope,
+  maxToolCalls: number,
+  options?: { toolBudgetExhausted?: boolean }
+): string {
   return `
 You are the AI CFO for Robotic Imaging, a reality-capture company that sends
 technicians to retail sites for LiDAR and imaging surveys.
@@ -67,9 +71,14 @@ RULES YOU MUST FOLLOW:
    specific category (e.g. "show me only flight anomalies"). Get everything
    first, then reason about it so you do not miss relevant anomalies that fall
    under a different anomaly type than the user expects.
-7. You may call multiple tools in sequence. For example, to explain why a
-   project is unprofitable, call get_scope_financials and
-   get_expense_breakdown and detect_anomalies.
+7. You may call multiple tools in sequence, but you may use at most
+   ${maxToolCalls} total tool calls for a single answer. Budget them carefully.
+   If you reach ${maxToolCalls} tool calls, or if continuing would require more
+   than ${maxToolCalls} total calls, stop calling tools and answer with the
+   data you already gathered. Do not ask for more tool calls after that point.
+   For example, to explain why a project is unprofitable, call
+   get_scope_financials and get_expense_breakdown and detect_anomalies — but
+   stay within the total tool-call budget.
 8. If the current page scope is organization or project scope, and the user is
    asking about the current page, you must reuse the exact current scopeId shown
    above when calling tools. Do not invent or paraphrase ids.
@@ -132,6 +141,9 @@ RULES YOU MUST FOLLOW:
     reflects..."). Draw on common patterns in field operations: seasonality,
     technician-specific behavior, site complexity, hardware one-offs, travel
     routing inefficiencies, etc.
+
+TOOL STATUS:
+${options?.toolBudgetExhausted ? `You have already exhausted the ${maxToolCalls}-call tool budget for this answer. You are not allowed to call any more tools. Answer now using only the data already collected, and be explicit about any remaining uncertainty.` : `You still have tool access for this answer, but only up to ${maxToolCalls} total tool calls.`}
 
 TONE AND STYLE:
 You are a sharp, experienced CFO who happens to be great at explaining things.

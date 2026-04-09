@@ -26,6 +26,7 @@ Simple way to explain it:
 "We are not using AI to invent fraud flags. We use fixed rules. We flag duplicates, anything outside the approved categories, any equipment purchase over $5,000, and any expense that is more than three times the normal average for that category."
 
 ---
+
 # AI CFO — How It Works
 
 When you ask a question, here is exactly what happens:
@@ -33,9 +34,10 @@ When you ask a question, here is exactly what happens:
 1. **Understands** your question and the current scope — injected automatically from the page you're on, you never have to say "I'm looking at Miami"
 2. **Plans** which tools to call and in what order
 3. **Executes** the tools and gets real data
-4. **Evaluates** whether it has enough to answer well — if not, calls more tools (up to 5 rounds)
-5. **Reasons** over everything it collected — spots patterns, forms opinions
-6. **Answers** like a CFO who knows the business, not a search engine
+4. **Evaluates** whether it has enough to answer well — if not, it can call more tools, but only up to `10` total tool calls for one answer
+5. **Stops calling tools** once it reaches that budget and answers from what it already collected instead of looping forever
+6. **Reasons** over everything it collected — spots patterns, forms opinions
+7. **Answers** like a CFO who knows the business, not a search engine
 
 **The tools:**
 
@@ -51,5 +53,9 @@ When you ask a question, here is exactly what happens:
 A question like "why is this project losing money?" will trigger `get_scope_financials`, then `get_expense_breakdown`, then `detect_anomalies` — Gemini decides that chain itself, not you.
 
 When someone asks something the pre-built tools don't cover — like the top spenders by category, a week-by-week breakdown, or the 10 largest individual expenses — Gemini reaches for `query_expenses`. It tells the tool exactly what fields it wants, how to group them, and what to filter. The tool fetches it, validates it, and hands it back. Gemini still never writes a query and still cannot see more than the scope allows.
+
+Important constraint to explain clearly:
+
+"The AI CFO has a hard cap of 10 tool calls per answer. It cannot keep calling tools forever. Once it hits that budget, it has to answer from the data it already collected and say what is still uncertain."
 
 **The constraints:** Gemini cannot go outside the tools. No raw SQL, no schema access, no invented numbers. The scope is enforced at every step — you cannot query data above your access level. If the dashboard shows $275K profit, the chat will too. They're reading the same place.
